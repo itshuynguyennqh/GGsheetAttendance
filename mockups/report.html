@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mockup - Báo cáo buổi | Renai</title>
+  <link rel="stylesheet" href="shared.css">
+  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600;700&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="app-bar">
+    <h1 class="brand-serif">Renai</h1>
+    <span class="tagline">Nurturing Renaissance Minds</span>
+  </header>
+  <div class="layout">
+    <nav class="drawer">
+      <a href="classes.html">Lớp học</a>
+      <a href="sessions.html">Ca học</a>
+      <a href="students.html">Học sinh</a>
+      <a href="attendance.html">Điểm danh</a>
+      <a href="report.html" class="active">Báo cáo buổi</a>
+      <a href="azota.html">Quản lý Azota</a>
+      <a href="#">Dashboard</a>
+    </nav>
+    <main class="main">
+      <div class="card" style="margin-bottom: 16px;">
+        <h2 class="brand-serif" style="margin: 0 0 8px; font-size: 1.25rem;">Lớp 9.1 - Buổi 3 (15/06/2025)</h2>
+        <p style="margin: 0; color: var(--mui-text-secondary); font-size: 0.875rem;">Nội dung: Ôn tập chương 2</p>
+      </div>
+      <div class="tabs">
+        <a href="#dialog-upload">Files</a>
+        <a href="#" class="active">Báo cáo</a>
+      </div>
+      <div class="card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <div>
+          <span style="margin-right: 8px;">Đáp án: 1 file</span>
+          <span style="margin-right: 8px;">File GV: 2</span>
+          <span>File HV: 15</span>
+        </div>
+        <a href="#dialog-copy-image" class="btn btn-primary">Copy dạng ảnh</a>
+      </div>
+      <div class="card table-wrap">
+        <table class="mock-table">
+          <thead>
+            <tr>
+              <th>STT</th>
+              <th>Họ tên</th>
+              <th>Điểm danh</th>
+              <th>Điểm</th>
+              <th>Kết quả Azota</th>
+              <th>Tóm tắt AI</th>
+              <th>Nhận xét GV</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td>Nguyễn Văn A</td>
+              <td>X</td>
+              <td>8.5</td>
+              <td>Đã nộp</td>
+              <td>Hoàn thành đủ bài, có sai sót nhỏ câu 3.</td>
+              <td>Tiến bộ tốt.</td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td>Trần Thị B</td>
+              <td>X</td>
+              <td>7.0</td>
+              <td>Đã nộp</td>
+              <td>Thiếu 1 bài, cần bổ sung.</td>
+              <td>Cần ôn thêm phần hình.</td>
+            </tr>
+            <tr style="background: rgba(0,0,0,0.02);">
+              <td colspan="7" style="font-weight: 500; color: var(--mui-text-secondary);">— Không đi học —</td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td>Lê Văn C</td>
+              <td><select style="padding: 4px;"><option>M</option><option>X</option><option>B</option><option>P</option></select></td>
+              <td>—</td>
+              <td>Chưa nộp</td>
+              <td>—</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td>Phạm Thị D</td>
+              <td>P</td>
+              <td>—</td>
+              <td>—</td>
+              <td>—</td>
+              <td>—</td>
+            </tr>
+          </tbody>
+        </table>
+        <p style="font-size: 0.75rem; color: var(--mui-text-secondary); margin: 12px 0 0;">Học sinh đi học (X, B) trên; không đi học (M, P) dưới. Sửa điểm danh để đưa tên vào danh sách đi học.</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- Mock dialogs Báo cáo buổi -->
+  <div id="dialog-upload" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Upload file</h3>
+      <p style="font-size: 0.875rem; margin: 0 0 12px;">Buổi 3 (15/06/2025) — Lớp 9.1</p>
+      <div class="form-group"><label>Loại file</label><select><option>Đáp án</option><option>File giáo viên</option><option>File học viên</option></select></div>
+      <div class="form-group"><label>Học viên</label><select style="display: none;"><option>—</option></select><span style="font-size: 0.75rem; color: var(--mui-text-secondary);">(Chọn khi loại = File học viên)</span></div>
+      <div class="form-group"><label>File</label><input type="file"></div>
+      <div class="mock-dialog-actions"><a href="#" class="btn btn-outlined">Hủy</a><a href="#" class="btn btn-primary">Upload</a></div>
+    </div>
+  </div>
+  <div id="dialog-copy-image" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Copy dạng ảnh</h3>
+      <p style="font-size: 0.875rem; margin: 0 0 12px;">Báo cáo đã được copy vào clipboard. Paste (Ctrl+V) vào Zalo/Email để gửi phụ huynh.</p>
+      <div class="mock-dialog-actions"><a href="#" class="btn btn-primary">Đóng</a></div>
+    </div>
+  </div>
+</body>
+</html>

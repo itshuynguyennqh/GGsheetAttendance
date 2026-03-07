@@ -1,0 +1,36 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Điểm danh API", "version": "1.0.0", "description": "REST API cho CRUD khóa học, lớp, học sinh, ca học, điểm danh." },
+  "servers": [{ "url": "http://localhost:3001", "description": "Local" }],
+  "paths": {
+    "/api/courses": {
+      "get": { "summary": "List courses", "tags": ["Courses"], "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Create course", "tags": ["Courses"], "responses": { "201": { "description": "Created" } } }
+    },
+    "/api/classes": {
+      "get": { "summary": "List classes", "tags": ["Classes"], "parameters": [{ "name": "course_id", "in": "query", "schema": { "type": "integer" } }], "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Create class", "tags": ["Classes"], "responses": { "201": { "description": "Created" } } }
+    },
+    "/api/students": {
+      "get": { "summary": "List students", "tags": ["Students"], "parameters": [{ "name": "class_id", "in": "query", "schema": { "type": "integer" } }], "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Create student", "tags": ["Students"], "responses": { "201": { "description": "Created" } } }
+    },
+    "/api/sessions": {
+      "get": { "summary": "List sessions", "tags": ["Sessions"], "parameters": [
+        { "name": "class_id", "in": "query", "schema": { "type": "integer" } },
+        { "name": "ngay_hoc_lte", "in": "query", "schema": { "type": "string" } },
+        { "name": "enable_attendance", "in": "query", "schema": { "type": "string" } }
+      ], "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Create session", "tags": ["Sessions"], "responses": { "201": { "description": "Created" } } }
+    },
+    "/api/attendance": {
+      "get": { "summary": "List attendance", "tags": ["Attendance"], "parameters": [
+        { "name": "class_id", "in": "query", "schema": { "type": "integer" } },
+        { "name": "session_id", "in": "query", "schema": { "type": "integer" } },
+        { "name": "ngay_diem_danh", "in": "query", "schema": { "type": "string" } }
+      ], "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Create attendance", "tags": ["Attendance"], "responses": { "201": { "description": "Created" } } },
+      "put": { "summary": "Batch update (PUT /api/attendance/batch)", "tags": ["Attendance"], "responses": { "200": { "description": "OK" } } }
+    }
+  }
+}

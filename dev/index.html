@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Streak Điểm Danh (Dev)</title>
+  <!-- Pico CSS: giao diện sạch, semantic, responsive -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <link rel="stylesheet" href="dashboard.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📊 Dashboard Streak Điểm Danh <span class="dev-banner">Local Dev</span></h1>
+      <div class="header-controls">
+        <button id="refreshBtn" class="btn btn-primary">🔄 Làm mới</button>
+        <button id="darkModeBtn" class="btn btn-secondary">🌙 Dark Mode</button>
+        <span id="lastUpdate" class="last-update"></span>
+      </div>
+    </header>
+
+    <!-- Stats Cards -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon">👥</div>
+        <div class="stat-content">
+          <div class="stat-value" id="totalStudents">-</div>
+          <div class="stat-label">Tổng học sinh</div>
+        </div>
+      </div>
+      <div class="stat-card positive">
+        <div class="stat-icon">✅</div>
+        <div class="stat-content">
+          <div class="stat-value" id="positiveStreak">-</div>
+          <div class="stat-label">Streak dương</div>
+        </div>
+      </div>
+      <div class="stat-card negative">
+        <div class="stat-icon">⚠️</div>
+        <div class="stat-content">
+          <div class="stat-value" id="negativeStreak">-</div>
+          <div class="stat-label">Streak âm</div>
+        </div>
+      </div>
+      <div class="stat-card warning">
+        <div class="stat-icon">🚨</div>
+        <div class="stat-content">
+          <div class="stat-value" id="warningCount">-</div>
+          <div class="stat-label">Cần cảnh báo</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filters: dòng thời gian theo buổi (khoảng bắt đầu – kết thúc) -->
+    <div class="filters">
+      <div class="filter-group">
+        <label for="startBuoi">Từ buổi:</label>
+        <select id="startBuoi">
+          <option value="1">Đầu tiên</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="endBuoi">Đến buổi:</label>
+        <select id="endBuoi">
+          <option value="">Cuối cùng</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="classFilter">Lớp:</label>
+        <select id="classFilter">
+          <option value="">Tất cả lớp</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="searchBox">Tìm kiếm:</label>
+        <input type="text" id="searchBox" placeholder="Tên hoặc Mã HV...">
+      </div>
+    </div>
+
+    <!-- Leaderboard -->
+    <section class="section">
+      <h2>🏆 Bảng Xếp Hạng (Top 20)</h2>
+      <div id="leaderboard" class="leaderboard"></div>
+    </section>
+
+    <!-- Charts -->
+    <div class="charts-grid">
+      <section class="section chart-section">
+        <h2>📊 Phân Bố Streak</h2>
+        <canvas id="streakDistributionChart"></canvas>
+      </section>
+      <section class="section chart-section">
+        <h2>📈 Thống Kê Theo Lớp</h2>
+        <canvas id="classStatsChart"></canvas>
+      </section>
+    </div>
+
+    <!-- Student List -->
+    <section class="section">
+      <h2>📋 Danh Sách Học Sinh</h2>
+      <div class="table-controls">
+        <span>Sắp xếp theo: </span>
+        <select id="sortBy">
+          <option value="currentStreak">Streak hiện tại</option>
+          <option value="hoTen">Họ tên</option>
+          <option value="lop">Lớp</option>
+          <option value="maxAttendStreak">Streak Max (Đi học)</option>
+        </select>
+        <button id="sortOrder" class="btn btn-small">↓ Giảm dần</button>
+      </div>
+      <div class="table-container">
+        <table id="studentTable" class="data-table">
+          <thead>
+            <tr>
+              <th>Mã HV</th>
+              <th>Họ Tên</th>
+              <th>Lớp</th>
+              <th>Streak hiện tại</th>
+              <th>Streak Max (Đi học)</th>
+              <th>Streak Max (Nghỉ)</th>
+            </tr>
+          </thead>
+          <tbody id="studentTableBody">
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Warnings -->
+    <section class="section">
+      <h2>🚨 Cảnh Báo</h2>
+      <div id="warnings" class="warnings-grid"></div>
+    </section>
+
+    <!-- Quyết định học viên (đã thôi học) -->
+    <section class="section">
+      <h2>📋 Quyết định học viên</h2>
+      <p class="section-desc">Học viên có buổi học cuối cùng trước <strong>Buổi 5 tháng 1.2026</strong> được xem là đã thôi học. Xuất CSV để paste vào sheet "quyết định học viên".</p>
+      <div class="table-controls">
+        <button id="exportQuyetDinhBtn" class="btn btn-primary">📥 Xuất CSV (chỉ nghỉ học)</button>
+        <button id="exportQuyetDinhAllBtn" class="btn btn-secondary">📥 Xuất CSV (tất cả)</button>
+      </div>
+      <div class="table-container">
+        <table id="quyetDinhTable" class="data-table">
+          <thead>
+            <tr>
+              <th>Mã HV</th>
+              <th>Họ tên</th>
+              <th>Lớp</th>
+              <th>Trạng thái</th>
+              <th>Buổi cuối cùng</th>
+              <th>Ghi chú (Lịch sử chăm sóc)</th>
+            </tr>
+          </thead>
+          <tbody id="quyetDinhTableBody">
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script src="streak-logic.js"></script>
+  <script src="quyet-dinh-hoc-vien.js"></script>
+  <script src="config.js"></script>
+  <script>
+    // Dashboard web thuần – kéo dữ liệu từ Google Sheet (Publish to web CSV). Không dùng App Script deploy.
+    let allStudents = [];
+    let filteredStudents = [];
+    let quyetDinhList = [];
+    let sortOrder = 'desc';
+    let currentSort = 'currentStreak';
+    let charts = {};
+
+    window.onload = function() {
+      loadData();
+      setupEventListeners();
+      setupAutoRefresh();
+    };
+
+    function setupEventListeners() {
+      document.getElementById('refreshBtn').addEventListener('click', loadData);
+      document.getElementById('darkModeBtn').addEventListener('click', toggleDarkMode);
+      document.getElementById('startBuoi').addEventListener('change', loadData);
+      document.getElementById('endBuoi').addEventListener('change', loadData);
+      document.getElementById('classFilter').addEventListener('change', filterStudents);
+      document.getElementById('searchBox').addEventListener('input', filterStudents);
+      document.getElementById('sortBy').addEventListener('change', (e) => {
+        currentSort = e.target.value;
+        renderStudentTable();
+      });
+      document.getElementById('sortOrder').addEventListener('click', () => {
+        sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+        document.getElementById('sortOrder').textContent = sortOrder === 'asc' ? '↑ Tăng dần' : '↓ Giảm dần';
+        renderStudentTable();
+      });
+      document.getElementById('exportQuyetDinhBtn').addEventListener('click', () => exportQuyetDinhCSV(true));
+      document.getElementById('exportQuyetDinhAllBtn').addEventListener('click', () => exportQuyetDinhCSV(false));
+    }
+
+    function setupAutoRefresh() {
+      setInterval(loadData, 5 * 60 * 1000);
+    }
+
+    function toggleDarkMode() {
+      const html = document.documentElement;
+      const currentTheme = html.getAttribute('data-theme');
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', newTheme);
+      localStorage.setItem('theme', newTheme);
+    }
+
+    (function() {
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    })();
+
+    function loadData() {
+      var loadingEl = document.getElementById('studentTableBody');
+      loadingEl.innerHTML = '<tr><td colspan="6" class="loading">Đang tải dữ liệu...</td></tr>';
+
+      var startBuoiVal = document.getElementById('startBuoi').value;
+      var endBuoiVal = document.getElementById('endBuoi').value;
+
+      var csvUrl = (typeof window.CSV_URL !== 'undefined' && window.CSV_URL) ? String(window.CSV_URL).trim() : '';
+      if (!csvUrl) {
+        loadingEl.innerHTML = '<tr><td colspan="6" class="error">Cấu hình CSV: sửa <code>dev/config.js</code>, đặt <code>CSV_URL</code> = link Publish to web (Google Sheet → File → Share → Publish to web → CSV).</td></tr>';
+        return;
+      }
+
+      if (typeof StreakLogic === 'undefined' || !StreakLogic.parseCSV || !StreakLogic.getStreakDataFromRows || !StreakLogic.buildFullResponse) {
+        loadingEl.innerHTML = '<tr><td colspan="6" class="error">Thiếu <code>streak-logic.js</code>.</td></tr>';
+        return;
+      }
+
+      console.log('[dev] CSV_URL:', csvUrl);
+
+      fetch(csvUrl, { cache: 'no-store', mode: 'cors' })
+        .then(function(r) {
+          console.log('[dev] response status:', r.status, r.statusText, '→', r.url);
+          if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + r.statusText);
+          return r.text();
+        })
+        .then(function(text) {
+          var rawText = (text || '').trim();
+          if (rawText.length === 0) throw new Error('Phản hồi trống. Kiểm tra CSV_URL.');
+          if (/<\s*\!?\s*DOCTYPE|<\s*html|<\s*script|<\s*meta\s+/i.test(rawText)) {
+            console.error('[dev] Phản hồi là HTML/JS, không phải CSV. Preview:', rawText.slice(0, 200));
+            throw new Error('URL trả về HTML/JS, không phải CSV. Đổi CSV_URL sang link CSV: Publish to web → chọn "Comma-separated values (.csv)" (không dùng link pubhtml).');
+          }
+          var rows = StreakLogic.parseCSV(rawText);
+          if (!rows || rows.length < 2) {
+            throw new Error('CSV trống hoặc chỉ có header. Kiểm tra sheet và link Publish to web.');
+          }
+          var filterOpts = {};
+          if (startBuoiVal) filterOpts.startBuoiIndex = parseInt(startBuoiVal, 10);
+          if (endBuoiVal) filterOpts.endBuoiIndex = parseInt(endBuoiVal, 10);
+          if (typeof window !== 'undefined' && (window.location.search.indexOf('debug=1') >= 0 || window.location.search.indexOf('debug=true') >= 0)) filterOpts.debug = true;
+          var raw = StreakLogic.getStreakDataFromRows(rows, filterOpts);
+          var applied = { startBuoiIndex: filterOpts.startBuoiIndex || null, endBuoiIndex: filterOpts.endBuoiIndex || null };
+          var result = StreakLogic.buildFullResponse(raw.students, raw.months, raw.buois, raw.timelineBuois, applied);
+          if (typeof QuyetDinhHocVien !== 'undefined') {
+            var qdOpts = { onlyDroppedOut: false };
+            if (typeof window !== 'undefined' && (window.location.search.indexOf('debug=1') >= 0 || window.location.search.indexOf('debug=true') >= 0)) {
+              qdOpts.debug = true;
+            }
+            result.quyetDinh = QuyetDinhHocVien.getQuyetDinhHocVienFromRows(rows, null, qdOpts);
+          }
+          return result;
+        })
+        .then(handleDataSuccess)
+        .catch(function(err) {
+          console.error('[dev] load error:', err);
+          handleDataError(err.message || 'Lỗi tải dữ liệu. Kiểm tra CSV_URL và CORS.');
+        });
+    }
+
+    function handleDataSuccess(data) {
+      if (!data || data.success === false) {
+        handleDataError(data && data.error ? data.error : 'Lỗi không xác định');
+        return;
+      }
+
+      allStudents = Array.isArray(data.students) ? data.students : [];
+      filteredStudents = allStudents.slice();
+      quyetDinhList = Array.isArray(data.quyetDinh) ? data.quyetDinh : [];
+
+      if (allStudents.length > 0 && allStudents[0].buoiValues) {
+        console.log('[debug] Mảng buổi của từng học sinh (buoiValues):');
+        allStudents.forEach(function(s, idx) {
+          console.log('[debug]', idx + 1, s.maHV, s.hoTen, '→', s.buoiValues);
+        });
+      }
+
+      var stats = data.stats || {};
+      updateStats(stats);
+
+      var updateTime = data.timestamp ? new Date(data.timestamp) : new Date();
+      document.getElementById('lastUpdate').textContent = 'Cập nhật: ' + updateTime.toLocaleString('vi-VN');
+
+      var filterOpts = data.filterOptions || {};
+      var applied = data.appliedFilters || {};
+      populateTimelineFilters(filterOpts.timelineBuois || [], applied.startBuoiIndex, applied.endBuoiIndex);
+      populateClassFilter(data.classes || []);
+
+      renderLeaderboard(data.leaderboard || []);
+      renderStudentTable();
+      renderWarnings(data.warnings || []);
+      renderCharts(data);
+      renderQuyetDinhTable();
+
+      filterStudents();
+
+      if (allStudents.length === 0) {
+        var msg = 'Không có bản ghi từ CSV. Kiểm tra: (1) Sheet \'Gộp_Nối_Tiếp\' đã có dữ liệu, (2) Đã Publish to web (File → Share → Publish to web → CSV), (3) CSV_URL trong config.js đúng link.';
+        document.getElementById('studentTableBody').innerHTML = '<tr><td colspan="6" class="error">' + escapeHtml(msg) + '</td></tr>';
+      }
+    }
+
+    function handleDataError(error) {
+      console.error('[dev] handleDataError:', error);
+      document.getElementById('studentTableBody').innerHTML = '<tr><td colspan="6" class="error">❌ Lỗi: ' + escapeHtml(String(error)) + '</td></tr>';
+    }
+
+    function updateStats(stats) {
+      document.getElementById('totalStudents').textContent = stats.totalStudents || 0;
+      document.getElementById('positiveStreak').textContent = stats.positiveStreakCount || 0;
+      document.getElementById('negativeStreak').textContent = stats.negativeStreakCount || 0;
+      document.getElementById('warningCount').textContent = stats.warningCount || 0;
+    }
+
+    function populateTimelineFilters(timelineBuois, selectedStart, selectedEnd) {
+      var startSelect = document.getElementById('startBuoi');
+      var endSelect = document.getElementById('endBuoi');
+      var all = timelineBuois || [];
+      var full = all.filter(function(t) { return t.thang && t.buoi != null; });
+      var list = full.length > 0 ? full : all;
+      var N = list.length;
+      startSelect.innerHTML = '';
+      endSelect.innerHTML = '';
+      if (N === 0) {
+        startSelect.innerHTML = '<option value="1">Đầu tiên</option>';
+        endSelect.innerHTML = '<option value="">Cuối cùng</option>';
+        return;
+      }
+      for (var i = 0; i < N; i++) {
+        var t = list[i];
+        var idx = t.index;
+        var label = t.label || ('Buổi ' + idx);
+        var optStart = document.createElement('option');
+        optStart.value = idx;
+        optStart.textContent = i === 0 ? 'Đầu tiên (' + label + ')' : label;
+        startSelect.appendChild(optStart);
+        var optEnd = document.createElement('option');
+        optEnd.value = idx;
+        optEnd.textContent = i === N - 1 ? 'Cuối cùng (' + label + ')' : label;
+        endSelect.appendChild(optEnd);
+      }
+      var firstIdx = list[0].index, lastIdx = list[N - 1].index;
+      var idxSet = {};
+      for (var j = 0; j < N; j++) idxSet[list[j].index] = true;
+      var startVal = (selectedStart != null && selectedStart !== '' && idxSet[selectedStart]) ? String(selectedStart) : String(firstIdx);
+      var endVal = (selectedEnd != null && selectedEnd !== '' && idxSet[selectedEnd]) ? String(selectedEnd) : String(lastIdx);
+      startSelect.value = startVal;
+      endSelect.value = endVal;
+    }
+
+    function populateClassFilter(classes) {
+      const select = document.getElementById('classFilter');
+      const currentValue = select.value;
+      select.innerHTML = '<option value="">Tất cả lớp</option>';
+      (classes || []).forEach(function(cls) {
+        const option = document.createElement('option');
+        option.value = cls.className;
+        option.textContent = cls.className;
+        select.appendChild(option);
+      });
+      if (currentValue) select.value = currentValue;
+    }
+
+    function filterStudents() {
+      var classFilter = document.getElementById('classFilter').value;
+      var searchTerm = document.getElementById('searchBox').value.toLowerCase();
+      var list = Array.isArray(allStudents) ? allStudents : [];
+      filteredStudents = list.filter(function(student) {
+        var matchClass = !classFilter || student.lop === classFilter;
+        var matchSearch = !searchTerm ||
+          (student.hoTen && student.hoTen.toLowerCase().indexOf(searchTerm) >= 0) ||
+          (student.maHV && student.maHV.toLowerCase().indexOf(searchTerm) >= 0) ||
+          (student.lop && student.lop.toLowerCase().indexOf(searchTerm) >= 0);
+        return matchClass && matchSearch;
+      });
+      renderStudentTable();
+    }
+
+    function renderLeaderboard(leaderboard) {
+      var container = document.getElementById('leaderboard');
+      if (!leaderboard || leaderboard.length === 0) {
+        container.innerHTML = '<p>Chưa có dữ liệu xếp hạng.</p>';
+        return;
+      }
+      container.innerHTML = leaderboard.map(function(student, index) {
+        var rankClass = index < 3 ? 'rank-' + (index + 1) : '';
+        var streakClass = student.currentStreak > 0 ? 'positive' : 'negative';
+        return '<div class="leaderboard-item ' + rankClass + '">' +
+          '<div class="rank-badge">' + student.rank + '</div>' +
+          '<div class="student-info">' +
+            '<div class="student-name">' + escapeHtml(student.hoTen) + '</div>' +
+            '<div class="student-class">' + escapeHtml(student.lop) + '</div>' +
+          '</div>' +
+          '<div class="streak-value ' + streakClass + '">' + student.currentStreak + '</div>' +
+        '</div>';
+      }).join('');
+    }
+
+    function renderStudentTable() {
+      var tbody = document.getElementById('studentTableBody');
+      if (filteredStudents.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="loading">Không có dữ liệu</td></tr>';
+        return;
+      }
+      var sorted = filteredStudents.slice().sort(function(a, b) {
+        var aVal = a[currentSort];
+        var bVal = b[currentSort];
+        if (typeof aVal === 'string') {
+          aVal = aVal.toLowerCase();
+          bVal = bVal.toLowerCase();
+        }
+        if (sortOrder === 'asc') return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+        return aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
+      });
+      tbody.innerHTML = sorted.map(function(student) {
+        var streakClass = student.currentStreak > 0 ? 'positive' : 'negative';
+        var maxAttendance = student.maxAttendance || student.maxAttendStreak || 0;
+        var maxAbsence = student.maxAbsence || student.maxAbsenceStreak || 0;
+        return '<tr>' +
+          '<td>' + escapeHtml(student.maHV) + '</td>' +
+          '<td>' + escapeHtml(student.hoTen) + '</td>' +
+          '<td>' + escapeHtml(student.lop) + '</td>' +
+          '<td><span class="streak-value ' + streakClass + '">' + student.currentStreak + '</span></td>' +
+          '<td>' + maxAttendance + '</td>' +
+          '<td>' + maxAbsence + '</td>' +
+        '</tr>';
+      }).join('');
+    }
+
+    function renderWarnings(warnings) {
+      var container = document.getElementById('warnings');
+      if (!warnings || warnings.length === 0) {
+        container.innerHTML = '<p>✅ Không có học sinh nào cần cảnh báo.</p>';
+        return;
+      }
+      container.innerHTML = warnings.map(function(warning) {
+        var maxAbsence = warning.maxAbsence || warning.maxAbsenceStreak || 0;
+        return '<div class="warning-card">' +
+          '<h3>' + escapeHtml(warning.hoTen) + ' (' + escapeHtml(warning.lop) + ')</h3>' +
+          '<p><strong>Mã HV:</strong> ' + escapeHtml(warning.maHV) + '</p>' +
+          '<p><strong>Streak hiện tại:</strong> <span class="streak-value negative">' + warning.currentStreak + '</span></p>' +
+          '<p><strong>Nghỉ Max:</strong> ' + maxAbsence + '</p>' +
+          '<p><strong>Lý do:</strong> ' + escapeHtml(warning.reason) + '</p>' +
+        '</div>';
+      }).join('');
+    }
+
+    function renderCharts(data) {
+      renderStreakDistributionChart(data && data.students ? data.students : []);
+      renderClassStatsChart(data && data.classes ? data.classes : []);
+    }
+
+    function renderStreakDistributionChart(students) {
+      var ctx = document.getElementById('streakDistributionChart');
+      if (!ctx) return;
+      if (charts.streakDistribution) charts.streakDistribution.destroy();
+
+      var ranges = { '>10': 0, '6-10': 0, '1-5': 0, '0': 0, '-1 đến -5': 0, '<-5': 0 };
+      (students || []).forEach(function(s) {
+        var streak = s.currentStreak;
+        if (streak > 10) ranges['>10']++;
+        else if (streak > 5) ranges['6-10']++;
+        else if (streak > 0) ranges['1-5']++;
+        else if (streak === 0) ranges['0']++;
+        else if (streak >= -5) ranges['-1 đến -5']++;
+        else ranges['<-5']++;
+      });
+
+      charts.streakDistribution = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: Object.keys(ranges),
+          datasets: [{ label: 'Số học sinh', data: Object.values(ranges), backgroundColor: ['#34a853', '#1a73e8', '#4285f4', '#9aa0a6', '#fbbc04', '#ea4335'] }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+      });
+    }
+
+    function renderClassStatsChart(classes) {
+      var ctx = document.getElementById('classStatsChart');
+      if (!ctx) return;
+      if (charts.classStats) charts.classStats.destroy();
+      classes = classes || [];
+      charts.classStats = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: classes.map(function(c) { return c.className; }),
+          datasets: [{ label: 'Tỷ lệ tích cực', data: classes.map(function(c) { return c.positiveStreak; }), backgroundColor: ['#34a853', '#1a73e8', '#4285f4', '#fbbc04', '#ea4335', '#9aa0a6'] }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
+      });
+    }
+
+    function renderQuyetDinhTable() {
+      var tbody = document.getElementById('quyetDinhTableBody');
+      if (!tbody) return;
+      var dropped = (quyetDinhList || []).filter(function(q) { return q.trangThai === 'nghỉ học'; });
+      var displayList = dropped.length > 0 ? dropped : quyetDinhList;
+      if (!displayList || displayList.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="loading">Chưa có dữ liệu hoặc không có học viên đã thôi học.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = displayList.map(function(q) {
+        var statusClass = q.trangThai === 'nghỉ học' ? 'negative' : q.trangThai === 'tái tục' ? 'positive' : '';
+        return '<tr>' +
+          '<td>' + escapeHtml(q.maHV) + '</td>' +
+          '<td>' + escapeHtml(q.hoTen) + '</td>' +
+          '<td>' + escapeHtml(q.lop) + '</td>' +
+          '<td><span class="streak-value ' + statusClass + '">' + escapeHtml(q.trangThai) + '</span></td>' +
+          '<td>' + escapeHtml(q.buoiCuoiCung) + '</td>' +
+          '<td>' + escapeHtml(q.ghiChu) + '</td>' +
+        '</tr>';
+      }).join('');
+    }
+
+    function exportQuyetDinhCSV(onlyDroppedOut) {
+      if (typeof QuyetDinhHocVien === 'undefined') {
+        alert('Module QuyetDinhHocVien chưa load.');
+        return;
+      }
+      var list = onlyDroppedOut
+        ? (quyetDinhList || []).filter(function(q) { return q.trangThai === 'nghỉ học'; })
+        : (quyetDinhList || []);
+      var csv = QuyetDinhHocVien.toCSV(list);
+      if (!csv || list.length === 0) {
+        alert(onlyDroppedOut ? 'Không có học viên đã thôi học.' : 'Chưa có dữ liệu.');
+        return;
+      }
+      navigator.clipboard.writeText(csv).then(function() {
+        alert('Đã copy ' + list.length + ' dòng vào clipboard. Paste vào Google Sheet (sheet "quyết định học viên").');
+      }).catch(function() {
+        var ta = document.createElement('textarea');
+        ta.value = csv;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        alert('Đã copy ' + list.length + ' dòng. Paste vào Google Sheet.');
+      });
+    }
+
+    function escapeHtml(text) {
+      if (text == null) return '';
+      var div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>

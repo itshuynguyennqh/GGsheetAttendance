@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body { font-family: 'Segoe UI', sans-serif; padding: 15px; background-color: #f8f9fa; }
+      .input-group { margin-bottom: 15px; }
+      label { display: block; font-size: 13px; color: #5f6368; margin-bottom: 5px; font-weight: bold; }
+      input { width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; box-sizing: border-box; }
+      button { 
+        width: 100%; padding: 10px; background-color: #1a73e8; color: white; 
+        border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="input-group">
+      <label>Khoảng dòng (Tự động nhận diện):</label>
+      <div style="display: flex; gap: 10px;">
+        <input type="number" id="startRow" value="<?= suggestedStart ?>">
+        <input type="number" id="endRow" value="<?= suggestedEnd ?>">
+      </div>
+    </div>
+    <div class="input-group">
+      <label>Số buổi cụ thể:</label>
+      <input type="number" id="sessionNum" placeholder="Ví dụ: 2">
+    </div>
+    <button onclick="execute()">🚀 Trích xuất & Chuyển màn</button>
+
+    <script>
+      function execute() {
+        const start = document.getElementById('startRow').value;
+        const end = document.getElementById('endRow').value;
+        const session = document.getElementById('sessionNum').value;
+        
+        if(!start || !end || !session) {
+          alert("Vui lòng nhập đầy đủ thông tin!");
+          return;
+        }
+
+        google.script.run
+          .withSuccessHandler(msg => {
+            console.log(msg);
+            google.script.host.close();
+          })
+          .withFailureHandler(err => alert("Lỗi: " + err.message))
+          .processAttendanceExport(Number(start), Number(end), session);
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mockup - Học sinh | Renai</title>
+  <link rel="stylesheet" href="shared.css">
+  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600;700&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="app-bar">
+    <h1 class="brand-serif">Renai</h1>
+    <span class="tagline">Nurturing Renaissance Minds</span>
+  </header>
+  <div class="layout">
+    <nav class="drawer">
+      <a href="classes.html">Lớp học</a>
+      <a href="sessions.html">Ca học</a>
+      <a href="students.html" class="active">Học sinh</a>
+      <a href="attendance.html">Điểm danh</a>
+      <a href="report.html">Báo cáo buổi</a>
+      <a href="azota.html">Quản lý Azota</a>
+      <a href="#">Dashboard</a>
+    </nav>
+    <main class="main">
+      <div class="card" style="margin-bottom: 16px;">
+        <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: center;">
+          <label>Lớp: <select style="padding: 8px; min-width: 100px;"><option value="">Tất cả</option><option>9.1</option><option>9.0</option><option>9.2</option></select></label>
+          <label>Tình trạng: <select style="padding: 8px; min-width: 120px;"><option value="">Tất cả</option><option>Đi học</option><option>Nghỉ</option><option>Bảo lưu</option></select></label>
+          <label>Tìm: <input type="text" placeholder="Tên hoặc Mã HV..." style="padding: 8px; width: 160px;"></label>
+          <a href="#dialog-add-student" class="btn btn-primary">+ Thêm học sinh</a>
+        </div>
+      </div>
+      <div class="card table-wrap">
+        <table class="mock-table">
+          <thead>
+            <tr>
+              <th style="min-width: 70px;">Mã HV</th>
+              <th style="min-width: 120px;">Họ tên</th>
+              <th style="min-width: 70px;">Lớp</th>
+              <th style="min-width: 80px;">Tình trạng</th>
+              <th style="min-width: 60px;">Năm sinh</th>
+              <th style="min-width: 90px;">SĐT riêng</th>
+              <th style="min-width: 100px;">SĐT phụ huynh</th>
+              <th style="min-width: 120px;">Tên phụ huynh</th>
+              <th style="min-width: 140px;">Lần sửa cuối</th>
+              <th style="min-width: 180px;">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>001</td>
+              <td>Nguyễn Văn A</td>
+              <td>9.1</td>
+              <td><span class="badge badge-success">Đi học</span></td>
+              <td>2010</td>
+              <td>0901234567</td>
+              <td>0912345678</td>
+              <td>Nguyễn Thị X</td>
+              <td>30/01/2025 14:30</td>
+              <td><a href="#dialog-edit-student" class="btn btn-outlined" style="padding: 4px 8px; margin-right: 4px; text-decoration: none;">Sửa</a><a href="#dialog-status" class="btn btn-outlined" style="padding: 4px 8px; margin-right: 4px; text-decoration: none;">Đổi TT</a><a href="#dialog-transfer" class="btn btn-outlined" style="padding: 4px 8px; text-decoration: none;">Chuyển lớp</a></td>
+            </tr>
+            <tr>
+              <td>002</td>
+              <td>Trần Thị B</td>
+              <td>9.1</td>
+              <td><span class="badge badge-success">Đi học</span></td>
+              <td>2010</td>
+              <td>—</td>
+              <td>0987654321</td>
+              <td>Trần Văn Y</td>
+              <td>29/01/2025 10:00</td>
+              <td><a href="#dialog-edit-student" class="btn btn-outlined" style="padding: 4px 8px; margin-right: 4px; text-decoration: none;">Sửa</a><a href="#dialog-status" class="btn btn-outlined" style="padding: 4px 8px; margin-right: 4px; text-decoration: none;">Đổi TT</a><a href="#dialog-transfer" class="btn btn-outlined" style="padding: 4px 8px; text-decoration: none;">Chuyển lớp</a></td>
+            </tr>
+            <tr>
+              <td>003</td>
+              <td>Lê Văn C</td>
+              <td>9.1</td>
+              <td><span class="badge badge-warning">Nghỉ</span></td>
+              <td>2009</td>
+              <td>—</td>
+              <td>—</td>
+              <td>—</td>
+              <td>28/01/2025 16:00</td>
+              <td><a href="#dialog-edit-student" class="btn btn-outlined" style="padding: 4px 8px; margin-right: 4px; text-decoration: none;">Sửa</a><a href="#dialog-status" class="btn btn-outlined" style="padding: 4px 8px; margin-right: 4px; text-decoration: none;">Đổi TT</a><a href="#dialog-transfer" class="btn btn-outlined" style="padding: 4px 8px; text-decoration: none;">Chuyển lớp</a></td>
+            </tr>
+          </tbody>
+        </table>
+        <p style="font-size: 0.75rem; color: var(--mui-text-secondary); margin: 12px 0 0;">Đổi TT = Đổi tình trạng (đi học / nghỉ / bảo lưu). Thêm học sinh có checkbox "Thêm vào Azota" (mặc định bật).</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- Mock dialogs Học sinh -->
+  <div id="dialog-add-student" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content" style="max-width: 480px;">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Thêm học sinh</h3>
+      <div class="form-group"><label>Mã HV</label><input type="text" placeholder="VD: 004"></div>
+      <div class="form-group"><label>Họ tên</label><input type="text" placeholder="Nguyễn Văn D"></div>
+      <div class="form-group"><label>Lớp</label><select><option>9.1</option><option>9.0</option><option>9.2</option></select></div>
+      <div class="form-group"><label>Năm sinh</label><input type="number" placeholder="2010"></div>
+      <div class="form-group"><label>SĐT riêng</label><input type="tel" placeholder="0901234567"></div>
+      <div class="form-group"><label>SĐT phụ huynh</label><input type="tel" placeholder="0912345678"></div>
+      <div class="form-group"><label>Tên phụ huynh</label><input type="text" placeholder="Nguyễn Thị X"></div>
+      <div class="form-group"><label style="display: flex; align-items: center; gap: 8px;"><input type="checkbox" checked> Thêm học sinh vào nền tảng Azota</label></div>
+      <div class="mock-dialog-actions"><a href="#" class="btn btn-outlined">Hủy</a><a href="#" class="btn btn-primary">Lưu</a></div>
+    </div>
+  </div>
+  <div id="dialog-edit-student" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content" style="max-width: 480px;">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Sửa học sinh</h3>
+      <div class="form-group"><label>Mã HV</label><input type="text" value="001"></div>
+      <div class="form-group"><label>Họ tên</label><input type="text" value="Nguyễn Văn A"></div>
+      <div class="form-group"><label>Lớp</label><select><option selected>9.1</option><option>9.0</option><option>9.2</option></select></div>
+      <div class="form-group"><label>Năm sinh</label><input type="number" value="2010"></div>
+      <div class="form-group"><label>SĐT phụ huynh</label><input type="tel" value="0912345678"></div>
+      <div class="mock-dialog-actions"><a href="#" class="btn btn-outlined">Hủy</a><a href="#" class="btn btn-primary">Lưu</a></div>
+    </div>
+  </div>
+  <div id="dialog-status" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Đổi tình trạng</h3>
+      <p style="font-size: 0.875rem; margin: 0 0 12px;">Nguyễn Văn A — Tình trạng hiện tại: <strong>Đi học</strong></p>
+      <div class="form-group"><label>Ngày thực hiện</label><input type="date" value="2025-01-31"></div>
+      <div class="form-group"><label>Trạng thái mới</label><select><option>Đi học</option><option>Nghỉ</option><option>Bảo lưu</option></select></div>
+      <div class="form-group"><label>Ghi chú</label><textarea rows="2" placeholder="VD: Nghỉ ốm"></textarea></div>
+      <div class="mock-dialog-actions"><a href="#" class="btn btn-outlined">Hủy</a><a href="#dialog-status-history" class="btn btn-outlined">Xem lịch sử</a><a href="#" class="btn btn-primary">Lưu</a></div>
+    </div>
+  </div>
+  <div id="dialog-status-history" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content" style="max-width: 480px;">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Lịch sử đổi tình trạng</h3>
+      <p style="font-size: 0.875rem; margin: 0 0 12px;">Nguyễn Văn A</p>
+      <div class="table-wrap">
+        <table class="mock-table">
+          <thead><tr><th>Ngày</th><th>Trạng thái</th><th>Ghi chú</th></tr></thead>
+          <tbody>
+            <tr><td>30/01/2025</td><td>Đi học</td><td>—</td></tr>
+            <tr><td>15/12/2024</td><td>Nghỉ</td><td>Ốm</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="mock-dialog-actions"><a href="#" class="btn btn-primary">Đóng</a></div>
+    </div>
+  </div>
+  <div id="dialog-transfer" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Chuyển lớp</h3>
+      <p style="font-size: 0.875rem; margin: 0 0 12px;">Nguyễn Văn A — Lớp hiện tại: <strong>9.1</strong></p>
+      <div class="form-group"><label>Lớp mới</label><select><option>9.0</option><option selected>9.1</option><option>9.2</option></select></div>
+      <div class="form-group"><label>Ngày thực hiện</label><input type="date" value="2025-01-31"></div>
+      <div class="form-group"><label>Loại chuyển</label><select><option>Tạm thời</option><option>Lâu dài</option></select></div>
+      <div class="form-group"><label>Lý do</label><input type="text" placeholder="VD: Theo yêu cầu phụ huynh"></div>
+      <div class="form-group"><label>Ghi chú</label><textarea rows="2"></textarea></div>
+      <div class="mock-dialog-actions"><a href="#" class="btn btn-outlined">Hủy</a><a href="#dialog-transfer-history" class="btn btn-outlined">Xem lịch sử</a><a href="#" class="btn btn-primary">Lưu</a></div>
+    </div>
+  </div>
+  <div id="dialog-transfer-history" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content" style="max-width: 520px;">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Lịch sử chuyển lớp</h3>
+      <p style="font-size: 0.875rem; margin: 0 0 12px;">Nguyễn Văn A</p>
+      <div class="table-wrap">
+        <table class="mock-table">
+          <thead><tr><th>Ngày</th><th>Từ</th><th>Đến</th><th>Loại</th><th>Lý do</th></tr></thead>
+          <tbody>
+            <tr><td>01/09/2024</td><td>9.0</td><td>9.1</td><td>Lâu dài</td><td>Theo yêu cầu PH</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="mock-dialog-actions"><a href="#" class="btn btn-primary">Đóng</a></div>
+    </div>
+  </div>
+</body>
+</html>

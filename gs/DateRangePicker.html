@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body { font-family: 'Segoe UI', sans-serif; padding: 20px; text-align: center; color: #333; background: #f9f9f9; }
+      h3 { margin-top: 0; color: #1a73e8; }
+      label { display: block; text-align: left; margin-top: 15px; font-weight: 600; font-size: 0.9em; margin-bottom: 5px; }
+      input { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+      input:focus { border-color: #1a73e8; outline: none; }
+      button { width: 100%; padding: 12px; background: #1a73e8; color: #fff; border: none; border-radius: 6px; cursor: pointer; margin-top: 25px; font-weight: bold; font-size: 14px; }
+      button:hover { background: #1557b0; }
+      button:disabled { background: #ccc; cursor: not-allowed; }
+      #loading { display: none; margin-top: 15px; color: #d93025; font-weight: 500; }
+      .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(0,0,0,.1); border-left-color: #d93025; border-radius: 50%; animation: spin 1s linear infinite; margin-right: 5px; vertical-align: middle; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <h3>📅 TÙY CHỌN BÁO CÁO</h3>
+    <label>Từ ngày:</label>
+    <input type="date" id="dateStart">
+    <label>Đến ngày:</label>
+    <input type="date" id="dateEnd">
+    <div id="loading"><span class="spinner"></span>Đang xử lý dữ liệu, vui lòng đợi...</div>
+    <button id="btnRun">🚀 TẠO BÁO CÁO</button>
+
+    <script>
+      (function() {
+        window.onload = function() {
+          var d = new Date();
+          document.getElementById('dateEnd').valueAsDate = d;
+          d.setDate(1);
+          document.getElementById('dateStart').valueAsDate = d;
+        };
+
+        document.getElementById('btnRun').addEventListener('click', function() {
+          var s = document.getElementById('dateStart').value;
+          var e = document.getElementById('dateEnd').value;
+          if (!s || !e) {
+            alert('Vui lòng chọn đầy đủ ngày bắt đầu và kết thúc!');
+            return;
+          }
+          var btn = document.getElementById('btnRun');
+          var loader = document.getElementById('loading');
+          btn.disabled = true;
+          btn.innerText = '⏳ Đang tạo báo cáo...';
+          loader.style.display = 'block';
+
+          google.script.run
+            .withSuccessHandler(function() {
+              google.script.host.close();
+            })
+            .withFailureHandler(function(err) {
+              var msg = (err && err.message) ? err.message : String(err);
+              alert('Lỗi: ' + msg);
+              btn.disabled = false;
+              btn.innerText = '🚀 THỬ LẠI';
+              loader.style.display = 'none';
+            })
+            .generateRangeReport(s, e);
+        });
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,453 @@
+openapi: 3.0.3
+info:
+  title: Hệ thống Quản lý Điểm Danh & BTVN API
+  description: |
+    API để lấy dữ liệu Streak điểm danh từ hệ thống quản lý điểm danh và bài tập về nhà.
+    
+    ## Authentication
+    API này không yêu cầu authentication nếu deploy với "Anyone" access.
+    
+    ## Base URL
+    Sau khi deploy Web App, bạn sẽ có URL dạng:
+    `https://script.google.com/macros/s/{SCRIPT_ID}/exec`
+    
+    Thay `{SCRIPT_ID}` bằng Script ID của bạn.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://script.google.com/macros/s/{scriptId}/exec
+    description: Production server
+    variables:
+      scriptId:
+        default: YOUR_SCRIPT_ID_HERE
+        description: Script ID từ Google Apps Script Project Settings
+
+tags:
+  - name: Dashboard
+    description: Dashboard HTML interface
+  - name: Streak Data
+    description: API lấy dữ liệu Streak điểm danh
+
+paths:
+  /:
+    get:
+      tags:
+        - Dashboard
+      summary: Lấy Dashboard HTML
+      description: |
+        Trả về giao diện Dashboard Streak dạng HTML.
+        Đây là endpoint mặc định khi không có parameters.
+      operationId: getDashboard
+      responses:
+        '200':
+          description: Dashboard HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+                example: "<!DOCTYPE html>..."
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl "https://script.google.com/macros/s/{SCRIPT_ID}/exec"
+        - lang: javascript
+          source: |
+            window.open('https://script.google.com/macros/s/{SCRIPT_ID}/exec', '_blank');
+
+  /?endpoint=getStreakData:
+    get:
+      tags:
+        - Streak Data
+      summary: Lấy dữ liệu Streak (JSON)
+      description: |
+        Trả về dữ liệu Streak điểm danh dạng JSON.
+        Có thể lọc theo tháng và/hoặc buổi.
+      operationId: getStreakData
+      parameters:
+        - name: endpoint
+          in: query
+          required: true
+          description: Phải là "getStreakData"
+          schema:
+            type: string
+            enum: [getStreakData]
+            default: getStreakData
+        - name: month
+          in: query
+          required: false
+          description: |
+            Lọc theo tháng. Format: "M.YYYY" (ví dụ: "6.2025" cho tháng 6 năm 2025)
+          schema:
+            type: string
+            pattern: '^\d{1,2}\.\d{4}$'
+            example: "6.2025"
+        - name: buoi
+          in: query
+          required: false
+          description: Lọc theo buổi học (1, 2, 3...)
+          schema:
+            type: integer
+            minimum: 1
+            example: 2
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StreakDataResponse'
+              examples:
+                success:
+                  summary: Response thành công
+                  value:
+                    success: true
+                    timestamp: "2026-01-26T10:30:00.000Z"
+                    students:
+                      - maHV: "HV-0000164"
+                        hoTen: "Nguyễn Văn A"
+                        ten: "A"
+                        lop: "Lớp 6A"
+                        currentStreak: 5
+                        maxAttendStreak: 10
+                        maxAbsenceStreak: 2
+                        totalSessions: 25
+                    leaderboard:
+                      - rank: 1
+                        maHV: "HV-0000164"
+                        hoTen: "Nguyễn Văn A"
+                        currentStreak: 15
+                    classes:
+                      - className: "Lớp 6A"
+                        total: 30
+                        positiveStreak: 25
+                        avgStreak: 8.5
+                    warnings: []
+                    stats:
+                      totalStudents: 150
+                      totalClasses: 5
+                      positiveStreakCount: 120
+                      negativeStreakCount: 10
+                      warningCount: 15
+                error:
+                  summary: Response lỗi
+                  value:
+                    success: false
+                    error: "Không tìm thấy sheet 'Gộp_Nối_Tiếp'! Vui lòng chạy hàm gộp sheet trước."
+                    timestamp: "2026-01-26T10:30:00.000Z"
+      x-code-samples:
+        - lang: curl
+          source: |
+            # Lấy tất cả dữ liệu
+            curl "https://script.google.com/macros/s/{SCRIPT_ID}/exec?endpoint=getStreakData"
+            
+            # Lọc theo tháng
+            curl "https://script.google.com/macros/s/{SCRIPT_ID}/exec?endpoint=getStreakData&month=6.2025"
+            
+            # Lọc theo tháng và buổi
+            curl "https://script.google.com/macros/s/{SCRIPT_ID}/exec?endpoint=getStreakData&month=6.2025&buoi=2"
+        - lang: javascript
+          source: |
+            // Lấy tất cả dữ liệu
+            fetch('https://script.google.com/macros/s/{SCRIPT_ID}/exec?endpoint=getStreakData')
+              .then(response => response.json())
+              .then(data => console.log(data));
+            
+            // Lọc theo tháng
+            fetch('https://script.google.com/macros/s/{SCRIPT_ID}/exec?endpoint=getStreakData&month=6.2025')
+              .then(response => response.json())
+              .then(data => console.log(data));
+        - lang: python
+          source: |
+            import requests
+            
+            url = "https://script.google.com/macros/s/{SCRIPT_ID}/exec"
+            params = {
+                "endpoint": "getStreakData",
+                "month": "6.2025",
+                "buoi": 2
+            }
+            
+            response = requests.get(url, params=params)
+            data = response.json()
+            print(data)
+
+components:
+  schemas:
+    Student:
+      type: object
+      description: Thông tin học sinh
+      properties:
+        maHV:
+          type: string
+          description: Mã học viên
+          example: "HV-0000164"
+        hoTen:
+          type: string
+          description: Họ và tên đầy đủ
+          example: "Nguyễn Văn A"
+        ten:
+          type: string
+          description: Tên (không có họ)
+          example: "A"
+        lop:
+          type: string
+          description: Lớp học
+          example: "Lớp 6A"
+        currentStreak:
+          type: integer
+          description: |
+            Streak hiện tại. 
+            - Dương = đang đi học liên tiếp
+            - Âm = đang nghỉ liên tiếp
+          example: 5
+        maxAttendStreak:
+          type: integer
+          description: Chuỗi đi học dài nhất
+          example: 10
+        maxAbsenceStreak:
+          type: integer
+          description: Chuỗi nghỉ dài nhất
+          example: 2
+        maxAttendance:
+          type: integer
+          description: Alias của maxAttendStreak
+          example: 10
+        maxAbsence:
+          type: integer
+          description: Alias của maxAbsenceStreak
+          example: 2
+        totalSessions:
+          type: integer
+          description: Tổng số buổi đã điểm danh
+          example: 25
+      required:
+        - maHV
+        - hoTen
+        - ten
+        - lop
+        - currentStreak
+        - maxAttendStreak
+        - maxAbsenceStreak
+
+    LeaderboardItem:
+      allOf:
+        - $ref: '#/components/schemas/Student'
+        - type: object
+          properties:
+            rank:
+              type: integer
+              description: Hạng trong leaderboard
+              example: 1
+          required:
+            - rank
+
+    ClassStats:
+      type: object
+      description: Thống kê theo lớp
+      properties:
+        className:
+          type: string
+          description: Tên lớp
+          example: "Lớp 6A"
+        total:
+          type: integer
+          description: Tổng số học sinh
+          example: 30
+        positiveStreak:
+          type: integer
+          description: Số học sinh có streak dương
+          example: 25
+        negativeStreak:
+          type: integer
+          description: Số học sinh có streak âm
+          example: 2
+        avgStreak:
+          type: number
+          format: float
+          description: Streak trung bình
+          example: 8.5
+        sumStreak:
+          type: integer
+          description: Tổng streak (dùng để tính avg)
+          example: 255
+      required:
+        - className
+        - total
+        - positiveStreak
+        - negativeStreak
+        - avgStreak
+
+    Warning:
+      allOf:
+        - $ref: '#/components/schemas/Student'
+        - type: object
+          properties:
+            reason:
+              type: string
+              description: Lý do cảnh báo
+              example: "Đang nghỉ 3 buổi liên tiếp"
+          required:
+            - reason
+
+    Stats:
+      type: object
+      description: Thống kê tổng hợp
+      properties:
+        totalStudents:
+          type: integer
+          description: Tổng số học sinh
+          example: 150
+        totalClasses:
+          type: integer
+          description: Tổng số lớp
+          example: 5
+        positiveStreakCount:
+          type: integer
+          description: Số học sinh có streak >= 5
+          example: 120
+        negativeStreakCount:
+          type: integer
+          description: Số học sinh có streak < 0
+          example: 10
+        warningCount:
+          type: integer
+          description: Số học sinh cần cảnh báo
+          example: 15
+      required:
+        - totalStudents
+        - totalClasses
+        - positiveStreakCount
+        - negativeStreakCount
+        - warningCount
+
+    FilterOptions:
+      type: object
+      description: Các tùy chọn filter có sẵn
+      properties:
+        months:
+          type: array
+          items:
+            type: string
+          description: Danh sách tháng có trong dữ liệu
+          example: ["6.2025", "7.2025", "8.2025"]
+        buois:
+          type: array
+          items:
+            type: integer
+          description: Danh sách buổi có trong dữ liệu
+          example: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+    AppliedFilters:
+      type: object
+      description: Filters đã được áp dụng
+      properties:
+        month:
+          type: string
+          nullable: true
+          description: Tháng đã filter (null = tất cả)
+          example: "6.2025"
+        buoi:
+          type: integer
+          nullable: true
+          description: Buổi đã filter (null = tất cả)
+          example: 2
+
+    StreakDataResponse:
+      type: object
+      description: Response từ API getStreakData
+      properties:
+        success:
+          type: boolean
+          description: Trạng thái thành công
+          example: true
+        timestamp:
+          type: string
+          format: date-time
+          description: Thời gian response
+          example: "2026-01-26T10:30:00.000Z"
+        students:
+          type: array
+          items:
+            $ref: '#/components/schemas/Student'
+          description: Danh sách học sinh
+        leaderboard:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaderboardItem'
+          description: Bảng xếp hạng (Top 20)
+        classes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClassStats'
+          description: Thống kê theo lớp
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Warning'
+          description: Danh sách cảnh báo
+        stats:
+          $ref: '#/components/schemas/Stats'
+        filterOptions:
+          $ref: '#/components/schemas/FilterOptions'
+        appliedFilters:
+          $ref: '#/components/schemas/AppliedFilters'
+        error:
+          type: string
+          description: Thông báo lỗi (chỉ có khi success = false)
+          example: "Không tìm thấy sheet 'Gộp_Nối_Tiếp'!"
+      required:
+        - success
+        - timestamp
+      oneOf:
+        - type: object
+          properties:
+            success:
+              type: boolean
+              const: true
+            students:
+              type: array
+            leaderboard:
+              type: array
+            classes:
+              type: array
+            warnings:
+              type: array
+            stats:
+              type: object
+            filterOptions:
+              type: object
+            appliedFilters:
+              type: object
+        - type: object
+          properties:
+            success:
+              type: boolean
+              const: false
+            error:
+              type: string
+
+  examples:
+    StudentExample:
+      value:
+        maHV: "HV-0000164"
+        hoTen: "Nguyễn Văn A"
+        ten: "A"
+        lop: "Lớp 6A"
+        currentStreak: 5
+        maxAttendStreak: 10
+        maxAbsenceStreak: 2
+        maxAttendance: 10
+        maxAbsence: 2
+        totalSessions: 25
+
+    ErrorResponseExample:
+      value:
+        success: false
+        error: "Không tìm thấy sheet 'Gộp_Nối_Tiếp'! Vui lòng chạy hàm gộp sheet trước."
+        timestamp: "2026-01-26T10:30:00.000Z"

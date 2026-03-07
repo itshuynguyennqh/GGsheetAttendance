@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mockup - Lớp học | Renai</title>
+  <link rel="stylesheet" href="shared.css">
+  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600;700&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="app-bar">
+    <h1 class="brand-serif">Renai</h1>
+    <span class="tagline">Nurturing Renaissance Minds</span>
+  </header>
+  <div class="layout">
+    <nav class="drawer">
+      <a href="classes.html" class="active">Lớp học</a>
+      <a href="sessions.html">Ca học</a>
+      <a href="students.html">Học sinh</a>
+      <a href="attendance.html">Điểm danh</a>
+      <a href="report.html">Báo cáo buổi</a>
+      <a href="azota.html">Quản lý Azota</a>
+      <a href="#">Dashboard</a>
+    </nav>
+    <main class="main">
+      <div class="card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <h2 class="brand-serif" style="margin: 0;">Lớp học</h2>
+        <a href="#dialog-add-class" class="btn btn-primary">+ Thêm lớp</a>
+      </div>
+      <div class="card table-wrap">
+        <table class="mock-table">
+          <thead>
+            <tr>
+              <th style="min-width: 60px;">ID</th>
+              <th style="min-width: 120px;">Tên lớp</th>
+              <th style="min-width: 100px;">Azota Class ID</th>
+              <th style="min-width: 140px;">Lần sửa cuối</th>
+              <th style="min-width: 140px;">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td>9.0</td>
+              <td>abc123</td>
+              <td>30/01/2025 14:30 — Admin</td>
+              <td><a href="#dialog-edit-class" class="btn btn-outlined" style="padding: 4px 12px; margin-right: 4px; text-decoration: none;">Sửa</a><a href="#dialog-delete-class" class="btn btn-outlined" style="padding: 4px 12px; text-decoration: none;">Xóa</a></td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td>9.1</td>
+              <td>abc123</td>
+              <td>30/01/2025 10:15 — Admin</td>
+              <td><a href="#dialog-edit-class" class="btn btn-outlined" style="padding: 4px 12px; margin-right: 4px; text-decoration: none;">Sửa</a><a href="#dialog-delete-class" class="btn btn-outlined" style="padding: 4px 12px; text-decoration: none;">Xóa</a></td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td>9.2</td>
+              <td>abc123</td>
+              <td>29/01/2025 16:00 — Admin</td>
+              <td><a href="#dialog-edit-class" class="btn btn-outlined" style="padding: 4px 12px; margin-right: 4px; text-decoration: none;">Sửa</a><a href="#dialog-delete-class" class="btn btn-outlined" style="padding: 4px 12px; text-decoration: none;">Xóa</a></td>
+            </tr>
+          </tbody>
+        </table>
+        <p style="font-size: 0.75rem; color: var(--mui-text-secondary); margin: 12px 0 0;">Nhiều lớp app (9.0, 9.1, 9.2) có thể gắn chung 1 Azota Class ID.</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- Mock dialogs Lớp học -->
+  <div id="dialog-add-class" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Thêm lớp</h3>
+      <div class="form-group"><label>Tên lớp</label><input type="text" placeholder="VD: 9.1"></div>
+      <div class="form-group"><label>Azota Class ID</label><input type="text" placeholder="Để trống nếu chưa gắn"></div>
+      <div class="mock-dialog-actions">
+        <a href="#" class="btn btn-outlined">Hủy</a>
+        <a href="#" class="btn btn-primary">Lưu</a>
+      </div>
+    </div>
+  </div>
+  <div id="dialog-edit-class" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Sửa lớp</h3>
+      <div class="form-group"><label>Tên lớp</label><input type="text" value="9.1"></div>
+      <div class="form-group"><label>Azota Class ID</label><input type="text" value="abc123"></div>
+      <div class="mock-dialog-actions">
+        <a href="#" class="btn btn-outlined">Hủy</a>
+        <a href="#" class="btn btn-primary">Lưu</a>
+      </div>
+    </div>
+  </div>
+  <div id="dialog-delete-class" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Xác nhận xóa</h3>
+      <p style="margin: 0 0 16px;">Bạn có chắc muốn xóa lớp <strong>9.1</strong>? Hành động này không thể hoàn tác.</p>
+      <div class="mock-dialog-actions">
+        <a href="#" class="btn btn-outlined">Hủy</a>
+        <a href="#" class="btn btn-primary" style="background: var(--mui-error);">Xóa</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

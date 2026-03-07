@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Streak Điểm Danh</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    <?!= include('DashboardStyles'); ?>
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📊 Dashboard Streak Điểm Danh</h1>
+      <div class="header-controls">
+        <button id="refreshBtn" class="btn btn-primary">🔄 Làm mới</button>
+        <button id="darkModeBtn" class="btn btn-secondary">🌙 Dark Mode</button>
+        <span id="lastUpdate" class="last-update"></span>
+      </div>
+    </header>
+
+    <!-- Stats Cards -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon">👥</div>
+        <div class="stat-content">
+          <div class="stat-value" id="totalStudents">-</div>
+          <div class="stat-label">Tổng học sinh</div>
+        </div>
+      </div>
+      <div class="stat-card positive">
+        <div class="stat-icon">✅</div>
+        <div class="stat-content">
+          <div class="stat-value" id="positiveStreak">-</div>
+          <div class="stat-label">Streak dương</div>
+        </div>
+      </div>
+      <div class="stat-card negative">
+        <div class="stat-icon">⚠️</div>
+        <div class="stat-content">
+          <div class="stat-value" id="negativeStreak">-</div>
+          <div class="stat-label">Streak âm</div>
+        </div>
+      </div>
+      <div class="stat-card warning">
+        <div class="stat-icon">🚨</div>
+        <div class="stat-content">
+          <div class="stat-value" id="warningCount">-</div>
+          <div class="stat-label">Cần cảnh báo</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filters">
+      <div class="filter-group">
+        <label for="monthFilter">Tháng:</label>
+        <select id="monthFilter">
+          <option value="">Tất cả tháng</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="buoiFilter">Buổi:</label>
+        <select id="buoiFilter">
+          <option value="">Tất cả buổi</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="classFilter">Lớp:</label>
+        <select id="classFilter">
+          <option value="">Tất cả lớp</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="searchBox">Tìm kiếm:</label>
+        <input type="text" id="searchBox" placeholder="Tên hoặc Mã HV...">
+      </div>
+    </div>
+
+    <!-- Leaderboard -->
+    <section class="section">
+      <h2>🏆 Bảng Xếp Hạng (Top 20)</h2>
+      <div id="leaderboard" class="leaderboard"></div>
+    </section>
+
+    <!-- Charts -->
+    <div class="charts-grid">
+      <section class="section chart-section">
+        <h2>📊 Phân Bố Streak</h2>
+        <canvas id="streakDistributionChart"></canvas>
+      </section>
+      <section class="section chart-section">
+        <h2>📈 Thống Kê Theo Lớp</h2>
+        <canvas id="classStatsChart"></canvas>
+      </section>
+    </div>
+
+    <!-- Student List -->
+    <section class="section">
+      <h2>📋 Danh Sách Học Sinh</h2>
+      <div class="table-controls">
+        <span>Sắp xếp theo: </span>
+        <select id="sortBy">
+          <option value="currentStreak">Streak hiện tại</option>
+          <option value="hoTen">Họ tên</option>
+          <option value="lop">Lớp</option>
+          <option value="maxAttendStreak">Streak Max (Đi học)</option>
+        </select>
+        <button id="sortOrder" class="btn btn-small">↓ Giảm dần</button>
+      </div>
+      <div class="table-container">
+        <table id="studentTable" class="data-table">
+          <thead>
+            <tr>
+              <th>Mã HV</th>
+              <th>Họ Tên</th>
+              <th>Lớp</th>
+              <th>Streak hiện tại</th>
+              <th>Streak Max (Đi học)</th>
+              <th>Streak Max (Nghỉ)</th>
+            </tr>
+          </thead>
+          <tbody id="studentTableBody">
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Warnings -->
+    <section class="section">
+      <h2>🚨 Cảnh Báo</h2>
+      <div id="warnings" class="warnings-grid"></div>
+    </section>
+  </div>
+
+  <script>
+    // Dashboard JavaScript - Client-side code
+    let allStudents = [];
+    let filteredStudents = [];
+    let sortOrder = 'desc';
+    let currentSort = 'currentStreak';
+    let charts = {};
+
+    // Initialize (chạy trên client; tránh ReferenceError: window is not defined khi evaluate template trên server)
+    (function() {
+      var g;
+      try { g = typeof window !== 'undefined' ? window : null; } catch (e) { g = null; }
+      if (g && g.document) {
+        g.onload = function() {
+          loadData();
+          setupEventListeners();
+          setupAutoRefresh();
+        };
+      }
+    })();
+
+    function setupEventListeners() {
+      document.getElementById('refreshBtn').addEventListener('click', loadData);
+      document.getElementById('darkModeBtn').addEventListener('click', toggleDarkMode);
+      document.getElementById('monthFilter').addEventListener('change', loadData);
+      document.getElementById('buoiFilter').addEventListener('change', loadData);
+      document.getElementById('classFilter').addEventListener('change', filterStudents);
+      document.getElementById('searchBox').addEventListener('input', filterStudents);
+      document.getElementById('sortBy').addEventListener('change', (e) => {
+        currentSort = e.target.value;
+        renderStudentTable();
+      });
+      document.getElementById('sortOrder').addEventListener('click', () => {
+        sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+        document.getElementById('sortOrder').textContent = sortOrder === 'asc' ? '↑ Tăng dần' : '↓ Giảm dần';
+        renderStudentTable();
+      });
+    }
+
+    function setupAutoRefresh() {
+      // Auto refresh every 5 minutes
+      setInterval(loadData, 5 * 60 * 1000);
+    }
+
+    function toggleDarkMode() {
+      const html = document.documentElement;
+      const currentTheme = html.getAttribute('data-theme');
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', newTheme);
+      localStorage.setItem('theme', newTheme);
+    }
+
+    // Load theme from localStorage
+    (function() {
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    })();
+
+    function loadData() {
+      const loadingEl = document.getElementById('studentTableBody');
+      loadingEl.innerHTML = '<tr><td colspan="6" class="loading">Đang tải dữ liệu...</td></tr>';
+
+      const monthVal = document.getElementById('monthFilter').value;
+      const buoiVal = document.getElementById('buoiFilter').value;
+
+      google.script.run
+        .withSuccessHandler(handleDataSuccess)
+        .withFailureHandler(handleDataError)
+        .getStreakDataForWeb(monthVal || null, buoiVal || null);
+    }
+
+    function handleDataSuccess(data) {
+      if (!data.success) {
+        handleDataError(data.error || 'Lỗi không xác định');
+        return;
+      }
+
+      allStudents = data.students;
+      filteredStudents = [...allStudents];
+
+      // Update stats
+      updateStats(data.stats);
+
+      // Update last update time
+      const updateTime = new Date(data.timestamp);
+      document.getElementById('lastUpdate').textContent = 
+        `Cập nhật: ${updateTime.toLocaleString('vi-VN')}`;
+
+      // Populate filters
+      populateMonthFilter(data.filterOptions ? data.filterOptions.months : [], data.appliedFilters ? data.appliedFilters.month : null);
+      populateBuoiFilter(data.filterOptions ? data.filterOptions.buois : [], data.appliedFilters ? data.appliedFilters.buoi : null);
+      populateClassFilter(data.classes);
+
+      // Render components
+      renderLeaderboard(data.leaderboard);
+      renderStudentTable();
+      renderWarnings(data.warnings);
+      renderCharts(data);
+
+      // Update filters
+      filterStudents();
+    }
+
+    function handleDataError(error) {
+      console.error('Error loading data:', error);
+      document.getElementById('studentTableBody').innerHTML = 
+        `<tr><td colspan="6" class="error">❌ Lỗi: ${error}</td></tr>`;
+    }
+
+    function updateStats(stats) {
+      document.getElementById('totalStudents').textContent = stats.totalStudents || 0;
+      // Học đủ (Streak >= 5)
+      document.getElementById('positiveStreak').textContent = stats.positiveStreakCount || 0;
+      // Nghỉ học / Chưa lại (Streak < 0)
+      document.getElementById('negativeStreak').textContent = stats.negativeStreakCount || 0;
+      // Vắng mặt lịch sử cao (maxAbsence >= 3)
+      document.getElementById('warningCount').textContent = stats.warningCount || 0;
+    }
+
+    function populateMonthFilter(months, selectedMonth) {
+      const select = document.getElementById('monthFilter');
+      select.innerHTML = '<option value="">Tất cả tháng</option>';
+      (months || []).forEach(m => {
+        const option = document.createElement('option');
+        option.value = m;
+        option.textContent = 'Tháng ' + m.replace('.', '/');
+        select.appendChild(option);
+      });
+      if (selectedMonth) select.value = selectedMonth;
+    }
+
+    function populateBuoiFilter(buois, selectedBuoi) {
+      const select = document.getElementById('buoiFilter');
+      select.innerHTML = '<option value="">Tất cả buổi</option>';
+      (buois || []).forEach(b => {
+        const option = document.createElement('option');
+        option.value = b;
+        option.textContent = 'Buổi ' + b;
+        select.appendChild(option);
+      });
+      if (selectedBuoi != null && selectedBuoi !== '') select.value = String(selectedBuoi);
+    }
+
+    function populateClassFilter(classes) {
+      const select = document.getElementById('classFilter');
+      const currentValue = select.value;
+
+      select.innerHTML = '<option value="">Tất cả lớp</option>';
+      (classes || []).forEach(cls => {
+        const option = document.createElement('option');
+        option.value = cls.className;
+        option.textContent = cls.className;
+        select.appendChild(option);
+      });
+      if (currentValue) select.value = currentValue;
+    }
+
+    function filterStudents() {
+      const classFilter = document.getElementById('classFilter').value;
+      const searchTerm = document.getElementById('searchBox').value.toLowerCase();
+
+      filteredStudents = allStudents.filter(student => {
+        const matchClass = !classFilter || student.lop === classFilter;
+        const matchSearch = !searchTerm || 
+          student.hoTen.toLowerCase().includes(searchTerm) ||
+          student.maHV.toLowerCase().includes(searchTerm) ||
+          student.lop.toLowerCase().includes(searchTerm);
+        
+        return matchClass && matchSearch;
+      });
+
+      renderStudentTable();
+    }
+
+    function renderLeaderboard(leaderboard) {
+      const container = document.getElementById('leaderboard');
+      
+      if (!leaderboard || leaderboard.length === 0) {
+        container.innerHTML = '<p>Chưa có dữ liệu xếp hạng.</p>';
+        return;
+      }
+
+      container.innerHTML = leaderboard.map((student, index) => {
+        const rankClass = index < 3 ? `rank-${index + 1}` : '';
+        const streakClass = student.currentStreak > 0 ? 'positive' : 'negative';
+        
+        return `
+          <div class="leaderboard-item ${rankClass}">
+            <div class="rank-badge">${student.rank}</div>
+            <div class="student-info">
+              <div class="student-name">${escapeHtml(student.hoTen)}</div>
+              <div class="student-class">${escapeHtml(student.lop)}</div>
+            </div>
+            <div class="streak-value ${streakClass}">${student.currentStreak}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderStudentTable() {
+      const tbody = document.getElementById('studentTableBody');
+      
+      if (filteredStudents.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="loading">Không có dữ liệu</td></tr>';
+        return;
+      }
+
+      // Sort students
+      const sorted = [...filteredStudents].sort((a, b) => {
+        let aVal = a[currentSort];
+        let bVal = b[currentSort];
+        
+        if (typeof aVal === 'string') {
+          aVal = aVal.toLowerCase();
+          bVal = bVal.toLowerCase();
+        }
+        
+        if (sortOrder === 'asc') {
+          return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+        } else {
+          return aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
+        }
+      });
+
+      tbody.innerHTML = sorted.map(student => {
+        const streakClass = student.currentStreak > 0 ? 'positive' : 'negative';
+        const maxAttendance = student.maxAttendance || student.maxAttendStreak || 0;
+        const maxAbsence = student.maxAbsence || student.maxAbsenceStreak || 0;
+        
+        return `
+          <tr>
+            <td>${escapeHtml(student.maHV)}</td>
+            <td>${escapeHtml(student.hoTen)}</td>
+            <td>${escapeHtml(student.lop)}</td>
+            <td><span class="streak-value ${streakClass}">${student.currentStreak}</span></td>
+            <td>${maxAttendance}</td>
+            <td>${maxAbsence}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderWarnings(warnings) {
+      const container = document.getElementById('warnings');
+      
+      if (!warnings || warnings.length === 0) {
+        container.innerHTML = '<p>✅ Không có học sinh nào cần cảnh báo.</p>';
+        return;
+      }
+
+      container.innerHTML = warnings.map(warning => {
+        const maxAbsence = warning.maxAbsence || warning.maxAbsenceStreak || 0;
+        return `
+          <div class="warning-card">
+            <h3>${escapeHtml(warning.hoTen)} (${escapeHtml(warning.lop)})</h3>
+            <p><strong>Mã HV:</strong> ${escapeHtml(warning.maHV)}</p>
+            <p><strong>Streak hiện tại:</strong> <span class="streak-value negative">${warning.currentStreak}</span></p>
+            <p><strong>Nghỉ Max:</strong> ${maxAbsence}</p>
+            <p><strong>Lý do:</strong> ${escapeHtml(warning.reason)}</p>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderCharts(data) {
+      renderStreakDistributionChart(data.students);
+      renderClassStatsChart(data.classes);
+    }
+
+    function renderStreakDistributionChart(students) {
+      const ctx = document.getElementById('streakDistributionChart');
+      if (!ctx) return;
+
+      // Destroy existing chart if any
+      if (charts.streakDistribution) {
+        charts.streakDistribution.destroy();
+      }
+
+      // Group by streak ranges
+      const ranges = {
+        '>10': 0,
+        '6-10': 0,
+        '1-5': 0,
+        '0': 0,
+        '-1 đến -5': 0,
+        '<-5': 0
+      };
+
+      students.forEach(s => {
+        const streak = s.currentStreak;
+        if (streak > 10) ranges['>10']++;
+        else if (streak > 5) ranges['6-10']++;
+        else if (streak > 0) ranges['1-5']++;
+        else if (streak === 0) ranges['0']++;
+        else if (streak >= -5) ranges['-1 đến -5']++;
+        else ranges['<-5']++;
+      });
+
+      charts.streakDistribution = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: Object.keys(ranges),
+          datasets: [{
+            label: 'Số học sinh',
+            data: Object.values(ranges),
+            backgroundColor: [
+              '#34a853',
+              '#1a73e8',
+              '#4285f4',
+              '#9aa0a6',
+              '#fbbc04',
+              '#ea4335'
+            ]
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true
+            }
+          }
+        }
+      });
+    }
+
+    function renderClassStatsChart(classes) {
+      const ctx = document.getElementById('classStatsChart');
+      if (!ctx) return;
+
+      // Destroy existing chart if any
+      if (charts.classStats) {
+        charts.classStats.destroy();
+      }
+
+      charts.classStats = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: classes.map(c => c.className),
+          datasets: [{
+            label: 'Tỷ lệ tích cực',
+            data: classes.map(c => c.positiveStreak),
+            backgroundColor: [
+              '#34a853',
+              '#1a73e8',
+              '#4285f4',
+              '#fbbc04',
+              '#ea4335',
+              '#9aa0a6'
+            ]
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'right'
+            }
+          }
+        }
+      });
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>

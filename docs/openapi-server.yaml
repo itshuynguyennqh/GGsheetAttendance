@@ -1,0 +1,120 @@
+openapi: 3.0.3
+info:
+  title: Điểm Danh API
+  description: REST API cho ứng dụng quản lý điểm danh
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3001
+    description: Local development
+
+paths:
+  /api/courses:
+    get:
+      summary: Lấy danh sách khóa học
+      responses:
+        '200':
+          description: Danh sách khóa học
+    post:
+      summary: Tạo khóa học
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                azotaClassId: { type: string }
+      responses:
+        '201':
+          description: Đã tạo
+
+  /api/classes:
+    get:
+      summary: Lấy danh sách lớp
+      parameters:
+        - name: courseId
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Danh sách lớp
+    post:
+      summary: Tạo lớp
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                courseId: { type: integer }
+                name: { type: string }
+                scheduleConfig: { type: string }
+      responses:
+        '201':
+          description: Đã tạo
+
+  /api/students:
+    get:
+      summary: Lấy danh sách học sinh
+      parameters:
+        - name: classId
+          in: query
+          schema: { type: integer }
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Danh sách học sinh
+
+  /api/sessions:
+    get:
+      summary: Lấy danh sách ca học
+      parameters:
+        - name: classId
+          in: query
+          schema: { type: integer }
+        - name: ngayHocLte
+          in: query
+          schema: { type: string }
+        - name: enableAttendance
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Danh sách ca học
+
+  /api/attendance:
+    get:
+      summary: Lấy điểm danh
+      parameters:
+        - name: sessionId
+          in: query
+          schema: { type: integer }
+        - name: classId
+          in: query
+          schema: { type: integer }
+        - name: ngayHocLte
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Sessions, students, attendance
+    put:
+      summary: Cập nhật điểm danh (batch)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                properties:
+                  studentId: { type: integer }
+                  sessionId: { type: integer }
+                  value: { type: string }
+                  note: { type: string }
+      responses:
+        '200':
+          description: OK

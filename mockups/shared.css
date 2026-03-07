@@ -1,0 +1,146 @@
+/* Mockup shared - Theme Renai (Nurturing Renaissance Minds) */
+:root {
+  /* Renai palette - #f6bd3c màu chủ đạo, theme tươi sáng */
+  --renai-yellow: #f6bd3c;         /* Màu chủ đạo */
+  --renai-yellow-dark: #e8ad2a;    /* Đậm hơn cho hover */
+  --renai-yellow-soft: #fdf4dc;    /* Yellow nhạt tươi cho nền */
+  --renai-yellow-light: #fffbf3;   /* Yellow rất nhạt, tươi sáng */
+  --renai-blue: #2c5a7f;           /* Blue tươi hơn cho text */
+  --renai-blue-dark: #1e4a69;
+  --renai-green: #3d9b5c;          /* Green tươi hơn */
+  --renai-green-light: #e8f5ed;
+  --renai-orange: #d4a574;         /* Soft orange/peach - highlight */
+  --renai-orange-soft: #faf3eb;
+  /* UI - vàng làm màu chủ đạo */
+  --mui-primary: var(--renai-yellow);
+  --mui-primary-dark: var(--renai-yellow-dark);
+  --mui-secondary: var(--renai-green);
+  --mui-success: var(--renai-green);
+  --mui-warning: var(--renai-orange);
+  --mui-error: #c45c4a;
+  --mui-bg: var(--renai-yellow-light);
+  --mui-paper: #ffffff;
+  --mui-text: rgba(30, 74, 110, 0.9);
+  --mui-text-secondary: rgba(30, 74, 110, 0.6);
+  --mui-border: rgba(246, 189, 60, 0.25);
+  --shadow-1: 0 1px 4px rgba(246, 189, 60, 0.06);
+  --shadow-2: 0 2px 8px rgba(246, 189, 60, 0.08);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: 'Source Sans 3', 'Segoe UI', sans-serif;
+  background: var(--mui-bg);
+  color: var(--mui-text);
+}
+/* Renai: serif for titles */
+h1, h2, .brand-serif {
+  font-family: 'Lora', 'Georgia', serif;
+  font-weight: 600;
+  color: var(--renai-blue);
+}
+.app-bar {
+  background: linear-gradient(135deg, #f8c95a 0%, var(--renai-yellow) 100%);
+  color: var(--renai-blue);
+  height: 56px;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  box-shadow: 0 2px 12px rgba(246, 189, 60, 0.2);
+}
+.app-bar h1 { margin: 0; font-size: 1.35rem; font-weight: 600; letter-spacing: 0.02em; }
+.app-bar .tagline { margin-left: 12px; font-size: 0.8rem; opacity: 0.85; font-weight: 500; color: var(--renai-blue); }
+.drawer {
+  width: 240px;
+  background: #fffeff;
+  border-right: 1px solid rgba(246, 189, 60, 0.2);
+  min-height: calc(100vh - 56px);
+  box-shadow: 1px 0 8px rgba(246, 189, 60, 0.04);
+}
+.drawer a {
+  display: block;
+  padding: 12px 16px;
+  color: var(--mui-text);
+  text-decoration: none;
+  border-left: 3px solid transparent;
+}
+.drawer a:hover { background: var(--renai-yellow-soft); color: var(--renai-blue); }
+.drawer a.active {
+  background: var(--renai-yellow-soft);
+  border-left-color: var(--renai-yellow);
+  color: var(--renai-blue);
+  font-weight: 600;
+}
+.layout { display: flex; }
+.main { flex: 1; padding: 24px; }
+.btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+.btn-primary { background: var(--renai-yellow); color: var(--renai-blue); }
+.btn-primary:hover { background: var(--renai-yellow-dark); }
+.btn-outlined { background: transparent; border: 1px solid var(--renai-yellow); color: var(--renai-blue); }
+.btn-outlined:hover { background: var(--renai-yellow-soft); border-color: var(--renai-yellow-dark); }
+.card {
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 2px 12px rgba(246, 189, 60, 0.06);
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(246, 189, 60, 0.2);
+}
+.card.highlight { border-left: 4px solid var(--renai-yellow); }
+.table-wrap { overflow-x: auto; }
+table.mock-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+table.mock-table th, table.mock-table td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--mui-border); }
+table.mock-table th { background: var(--renai-yellow-soft); font-weight: 600; color: var(--renai-blue); border-color: rgba(246, 189, 60, 0.3); }
+table.mock-table tr:hover { background: rgba(246, 189, 60, 0.04); }
+.cell-focus { outline: 2px solid var(--renai-yellow); outline-offset: -2px; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; }
+.badge-success { background: var(--renai-green-light); color: var(--renai-green); }
+.badge-warning { background: var(--renai-orange-soft); color: var(--renai-orange); }
+.tabs { display: flex; border-bottom: 1px solid var(--mui-border); margin-bottom: 16px; }
+.tabs a { padding: 12px 16px; text-decoration: none; color: var(--mui-text-secondary); }
+.tabs a:hover { color: var(--renai-blue); }
+.tabs a.active { color: var(--renai-blue); border-bottom: 2px solid var(--renai-yellow); margin-bottom: -1px; font-weight: 600; }
+
+/* Mock dialogs - dùng :target để hiện; click vùng xám = đóng */
+.mock-dialog {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 74, 110, 0.2);
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.mock-dialog:target { display: flex; }
+.mock-dialog-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  cursor: default;
+}
+.mock-dialog-content {
+  position: relative;
+  z-index: 1;
+  background: #fff;
+  padding: 24px;
+  border-radius: 10px;
+  max-width: 440px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(246, 189, 60, 0.2);
+  border: 1px solid rgba(246, 189, 60, 0.3);
+  pointer-events: auto;
+}
+.mock-dialog-title { font-family: Lora, serif; font-weight: 600; color: var(--renai-blue); margin: 0 0 16px; font-size: 1.1rem; }
+.mock-dialog .form-group { margin-bottom: 12px; }
+.mock-dialog label { display: block; font-size: 0.875rem; margin-bottom: 4px; color: var(--mui-text-secondary); }
+.mock-dialog input, .mock-dialog select, .mock-dialog textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--mui-border); border-radius: 6px; font-size: 0.875rem; }
+.mock-dialog-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+.mock-dialog-actions .btn { min-width: 80px; }
+.mock-dialog-close { position: absolute; top: 12px; right: 12px; color: var(--mui-text-secondary); text-decoration: none; font-size: 1.25rem; line-height: 1; }

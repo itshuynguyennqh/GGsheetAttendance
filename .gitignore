@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+python/**/venv/
+*.egg-info/
+
+# Build output
+dist/
+build/
+dist-ssr/
+
+# Logs
+*.log
+server/logs/
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Google/Clasp (nếu chứa thông tin nhạy cảm)
+.clasp.json

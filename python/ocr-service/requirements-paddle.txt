@@ -1,0 +1,7 @@
+# Optional: dùng khi OCR_ENGINE=paddleocr (chữ viết tay + tên tiếng Việt tốt hơn EasyOCR)
+# Bước 1: pip install -r requirements.txt
+# Bước 2: pip install -r requirements-paddle.txt
+#        (Windows CPU: có thể cần python -m pip install paddlepaddle==3.2.0 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/)
+# Bước 3: set OCR_ENGINE=paddleocr && uvicorn main:app --reload --port 8000
+paddlepaddle>=3.0.0
+paddleocr>=3.0.0

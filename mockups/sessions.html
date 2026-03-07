@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mockup - Ca học | Renai</title>
+  <link rel="stylesheet" href="shared.css">
+  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600;700&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="app-bar">
+    <h1 class="brand-serif">Renai</h1>
+    <span class="tagline">Nurturing Renaissance Minds</span>
+  </header>
+  <div class="layout">
+    <nav class="drawer">
+      <a href="classes.html">Lớp học</a>
+      <a href="sessions.html" class="active">Ca học</a>
+      <a href="students.html">Học sinh</a>
+      <a href="attendance.html">Điểm danh</a>
+      <a href="report.html">Báo cáo buổi</a>
+      <a href="azota.html">Quản lý Azota</a>
+      <a href="#">Dashboard</a>
+    </nav>
+    <main class="main">
+      <div class="card" style="margin-bottom: 16px;">
+        <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: center;">
+          <label>Lớp: <select style="padding: 8px; min-width: 140px;"><option>9.1</option><option>9.0</option><option>9.2</option></select></label>
+          <a href="#dialog-add-session" class="btn btn-primary">+ Thêm ca thủ công</a>
+          <a href="#dialog-schedule" style="color: var(--renai-blue); font-weight: 500;">Lịch lặp lại mỗi tuần</a>
+        </div>
+      </div>
+      <div class="tabs">
+        <a href="#" class="active">Danh sách ca</a>
+        <a href="#dialog-generate">Sinh ca từ lịch</a>
+      </div>
+      <div class="card table-wrap">
+        <table class="mock-table">
+          <thead>
+            <tr>
+              <th style="min-width: 60px;">ID</th>
+              <th style="min-width: 100px;">Ngày học</th>
+              <th style="min-width: 80px;">Giờ</th>
+              <th style="min-width: 80px;">Tháng</th>
+              <th style="min-width: 60px;">Buổi</th>
+              <th style="min-width: 180px;">Nội dung</th>
+              <th style="min-width: 80px;">Nguồn</th>
+              <th style="min-width: 80px;">Điểm danh</th>
+              <th style="min-width: 140px;">Lần sửa cuối</th>
+              <th style="min-width: 160px;">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td>02/06/2025</td>
+              <td>19:00</td>
+              <td>6.2025</td>
+              <td>1</td>
+              <td>Ôn tập chương 2</td>
+              <td><span class="badge badge-success">template</span></td>
+              <td><span class="badge badge-success">Có</span></td>
+              <td>30/01/2025 14:30</td>
+              <td><a href="attendance.html?sessionId=1&classId=1" class="btn btn-primary" style="padding: 4px 12px; text-decoration: none;">Điểm danh</a> <a href="#dialog-edit-session" class="btn btn-outlined" style="padding: 4px 12px; text-decoration: none;">Sửa</a></td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td>04/06/2025</td>
+              <td>19:00</td>
+              <td>6.2025</td>
+              <td>2</td>
+              <td>Bài tập 1–5</td>
+              <td><span class="badge badge-success">template</span></td>
+              <td><span class="badge badge-success">Có</span></td>
+              <td>30/01/2025 14:30</td>
+              <td><a href="attendance.html?sessionId=2&classId=1" class="btn btn-primary" style="padding: 4px 12px; text-decoration: none;">Điểm danh</a> <a href="#dialog-edit-session" class="btn btn-outlined" style="padding: 4px 12px; text-decoration: none;">Sửa</a></td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td>15/06/2025</td>
+              <td>14:00</td>
+              <td>6.2025</td>
+              <td>—</td>
+              <td>Ca bù Tết</td>
+              <td><span class="badge badge-warning">manual</span></td>
+              <td><span class="badge badge-success">Có</span></td>
+              <td>29/01/2025 10:00</td>
+              <td><a href="attendance.html?sessionId=3&classId=1" class="btn btn-primary" style="padding: 4px 12px; text-decoration: none;">Điểm danh</a> <a href="#dialog-edit-session" class="btn btn-outlined" style="padding: 4px 12px; text-decoration: none;">Sửa</a></td>
+            </tr>
+          </tbody>
+        </table>
+        <p style="font-size: 0.75rem; color: var(--mui-text-secondary); margin: 12px 0 0;">Bấm <strong>Điểm danh</strong> → chuyển sang màn hình điểm danh với ca đã chọn, giáo viên có thể cập nhật ngay. Ca có điểm danh = Có mới hiện cột trong grid.</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- Mock dialogs Ca học -->
+  <div id="dialog-add-session" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Thêm ca thủ công</h3>
+      <div class="form-group"><label>Ngày học</label><input type="date" value="2025-06-20"></div>
+      <div class="form-group"><label>Giờ</label><input type="time" value="19:00"></div>
+      <div class="form-group"><label>Nội dung</label><input type="text" placeholder="VD: Ca bù Tết"></div>
+      <div class="form-group"><label style="display: flex; align-items: center; gap: 8px;"><input type="checkbox" checked> Có điểm danh</label></div>
+      <div class="mock-dialog-actions"><a href="#" class="btn btn-outlined">Hủy</a><a href="#" class="btn btn-primary">Lưu</a></div>
+    </div>
+  </div>
+  <div id="dialog-edit-session" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Sửa ca học</h3>
+      <div class="form-group"><label>Ngày học</label><input type="date" value="2025-06-02"></div>
+      <div class="form-group"><label>Giờ</label><input type="time" value="19:00"></div>
+      <div class="form-group"><label>Nội dung</label><input type="text" value="Ôn tập chương 2"></div>
+      <div class="form-group"><label style="display: flex; align-items: center; gap: 8px;"><input type="checkbox" checked> Có điểm danh</label></div>
+      <div class="mock-dialog-actions"><a href="#" class="btn btn-outlined">Hủy</a><a href="#" class="btn btn-primary">Lưu</a></div>
+    </div>
+  </div>
+  <div id="dialog-schedule" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content" style="max-width: 520px;">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Lịch lặp lại mỗi tuần</h3>
+      <p style="font-size: 0.875rem; color: var(--mui-text-secondary); margin: 0 0 12px;">Lớp 9.1 — Các slot trong tuần</p>
+      <div class="table-wrap">
+        <table class="mock-table">
+          <thead><tr><th>Thứ</th><th>Giờ</th><th>Nội dung</th></tr></thead>
+          <tbody>
+            <tr><td>Thứ 2</td><td>19:00</td><td>Ôn tập</td></tr>
+            <tr><td>Thứ 4</td><td>19:00</td><td>Bài tập</td></tr>
+            <tr><td>Thứ 6</td><td>19:00</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-bottom: 12px;"><label style="display: flex; align-items: center; gap: 8px;"><input type="checkbox" checked> Mặc định có điểm danh cho ca sinh ra</label></div>
+      <div class="mock-dialog-actions"><a href="#" class="btn btn-outlined">Thêm slot</a><a href="#dialog-schedule-history" class="btn btn-outlined">Xem lịch sử</a><a href="#" class="btn btn-primary">Đóng</a></div>
+    </div>
+  </div>
+  <div id="dialog-schedule-history" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content" style="max-width: 560px;">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Lịch sử thay đổi lịch học</h3>
+      <p style="font-size: 0.875rem; margin: 0 0 12px;">Lớp 9.1</p>
+      <div class="table-wrap">
+        <table class="mock-table">
+          <thead><tr><th>Ngày</th><th>Thao tác</th><th>Thứ</th><th>Giờ</th><th>Ghi chú</th></tr></thead>
+          <tbody>
+            <tr><td>30/01/2025</td><td>Thêm</td><td>T2</td><td>19:00</td><td>—</td></tr>
+            <tr><td>28/01/2025</td><td>Sửa</td><td>T6</td><td>19:00</td><td>Đổi giờ</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="mock-dialog-actions"><a href="#" class="btn btn-primary">Đóng</a></div>
+    </div>
+  </div>
+  <div id="dialog-generate" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Sinh ca từ lịch</h3>
+      <p style="font-size: 0.875rem; color: var(--mui-text-secondary); margin: 0 0 12px;">Chọn khoảng thời gian để tạo sessions từ template</p>
+      <div class="form-group"><label>Từ ngày</label><input type="date" value="2025-06-01"></div>
+      <div class="form-group"><label>Đến ngày</label><input type="date" value="2025-06-30"></div>
+      <div class="mock-dialog-actions"><a href="#" class="btn btn-outlined">Hủy</a><a href="#" class="btn btn-primary">Sinh ca</a></div>
+    </div>
+  </div>
+</body>
+</html>

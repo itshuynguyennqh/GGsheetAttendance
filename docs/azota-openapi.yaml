@@ -1,0 +1,515 @@
+openapi: 3.0.3
+info:
+  title: Azota API (Unofficial)
+  description: |
+    Tài liệu API Azota thu thập từ HAR (DevTools Network).
+    **Azota không công bố API công khai** - thông tin reverse-engineer từ web app.
+    
+    Để thử API, cần lấy Bearer token hoặc Cookie từ DevTools sau khi đăng nhập azota.vn.
+  version: 1.0.0
+
+servers:
+  - url: https://azt-teacher-api.azota.vn
+    description: Teacher API
+  - url: https://azt-student-api.azota.vn
+    description: Student API
+  - url: https://azt-tracking-api.azota.vn
+    description: Tracking API
+  - url: https://aiapi.azota.vn
+    description: AI API
+  - url: https://azt-adsword-api.azota.vn
+    description: Adsword API
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    classroomId:
+      name: classroomId
+      in: query
+      schema: { type: integer }
+    classId:
+      name: classId
+      in: query
+      schema: { type: integer }
+    id:
+      name: id
+      in: query
+      schema: { type: integer }
+    shareType:
+      name: shareType
+      in: query
+      schema: { type: string, example: all }
+    getStatistic:
+      name: getStatistic
+      in: query
+      schema: { type: integer, enum: [0, 1] }
+
+paths:
+  # ========== TEACHER API ==========
+  /api/Info/RefreshNewToken:
+    get:
+      tags: [Teacher API]
+      summary: Làm mới token
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /api/Auth/ExchangeAccessToken:
+    get:
+      tags: [Teacher API, Student API]
+      summary: Đổi access token
+      servers:
+        - { url: https://azt-teacher-api.azota.vn }
+        - { url: https://azt-student-api.azota.vn }
+      responses:
+        '200': { description: OK }
+
+  /api/Info/GetEnvV2:
+    get:
+      tags: [Teacher API, Student API]
+      summary: Cấu hình môi trường
+      servers:
+        - { url: https://azt-teacher-api.azota.vn }
+        - { url: https://azt-student-api.azota.vn }
+      responses:
+        '200': { description: OK }
+
+  /api/FrontCommon/GetHeaderInfo:
+    get:
+      tags: [Teacher API, Student API]
+      summary: Thông tin header (user, menu)
+      servers:
+        - { url: https://azt-teacher-api.azota.vn }
+        - { url: https://azt-student-api.azota.vn }
+      responses:
+        '200': { description: OK }
+
+  /api/Classroom/GetObj:
+    get:
+      tags: [Teacher API]
+      summary: Chi tiết lớp
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      responses:
+        '200': { description: OK }
+
+  /api/ClassroomGroup/GetObjs:
+    get:
+      tags: [Teacher API]
+      summary: Danh sách nhóm lớp
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      parameters: [{ $ref: '#/components/parameters/shareType' }]
+      responses:
+        '200': { description: OK }
+
+  /api/StudentProfileV2/GetObjsByClassroomId:
+    get:
+      tags: [Teacher API]
+      summary: Học sinh theo lớp
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      parameters:
+        - { $ref: '#/components/parameters/classroomId' }
+        - { $ref: '#/components/parameters/getStatistic' }
+      responses:
+        '200': { description: OK }
+
+  /api/StudentProfileV2/ListStudentClassrooms:
+    get:
+      tags: [Teacher API]
+      summary: Lớp của học sinh
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /api/StudentProfileV2/GetObj:
+    post:
+      tags: [Teacher API]
+      summary: Chi tiết học sinh
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: OK }
+
+  /api/StudentProfileV2/GetExamResultObjs:
+    post:
+      tags: [Teacher API]
+      summary: Kết quả thi
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: OK }
+
+  /api/StudentProfileV2/GetHomeworkAnswerObjs:
+    post:
+      tags: [Teacher API]
+      summary: Bài tập về nhà
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: OK }
+
+  /api/MarkManagement/ListStudentMarksByTeacher:
+    post:
+      tags: [Teacher API]
+      summary: Điểm theo GV
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: OK }
+
+  /api/Student/RemoveMappingObj:
+    get:
+      tags: [Teacher API]
+      summary: Xóa mapping học sinh
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /api/Student/SaveObj:
+    post:
+      tags: [Teacher API]
+      summary: Lưu/cập nhật học sinh
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: OK }
+
+  /api/ExamPageResult/GetObjV3:
+    get:
+      tags: [Teacher API]
+      summary: Chi tiết kết quả đề thi
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /api/ExamPageResult/ListResults:
+    get:
+      tags: [Teacher API]
+      summary: Danh sách kết quả
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /api/OfflineExamExport/ExportResultOfAllOfflineMixQuestionHashId:
+    get:
+      tags: [Teacher API]
+      summary: Xuất kết quả offline
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /api/OfflineExamResult/HasOfflineExam:
+    get:
+      tags: [Teacher API]
+      summary: Kiểm tra có đề offline
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /api/Notice/GetAllNoticeRequestForClass:
+    get:
+      tags: [Teacher API]
+      summary: Thông báo theo lớp
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      parameters: [{ $ref: '#/components/parameters/classId' }]
+      responses:
+        '200': { description: OK }
+
+  /api/NoticeForUser/GetObj:
+    get:
+      tags: [Teacher API, Student API]
+      summary: Thông báo user
+      servers:
+        - { url: https://azt-teacher-api.azota.vn }
+        - { url: https://azt-student-api.azota.vn }
+      responses:
+        '200': { description: OK }
+
+  /api/UserCloudStorage/GetObjs:
+    get:
+      tags: [Teacher API, Student API]
+      summary: Cloud storage
+      servers:
+        - { url: https://azt-teacher-api.azota.vn }
+        - { url: https://azt-student-api.azota.vn }
+      responses:
+        '200': { description: OK }
+
+  /api/PayAsGoPayment/GetCurrentPoint:
+    get:
+      tags: [Teacher API, Student API]
+      summary: Điểm thanh toán Pay-as-you-go
+      servers:
+        - { url: https://azt-teacher-api.azota.vn }
+        - { url: https://azt-student-api.azota.vn }
+      responses:
+        '200': { description: OK }
+
+  /api/VipMustUpgrade/CheckVipMustUpgrade:
+    get:
+      tags: [Teacher API]
+      summary: Kiểm tra VIP cần nâng cấp
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /api/VipPackage/GetMyPackage:
+    post:
+      tags: [Teacher API, Student API]
+      summary: Gói VIP
+      servers:
+        - { url: https://azt-teacher-api.azota.vn }
+        - { url: https://azt-student-api.azota.vn }
+      responses:
+        '200': { description: OK }
+
+  /api/ComboPackage/ListComboPackages:
+    post:
+      tags: [Teacher API]
+      summary: Danh sách combo gói
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /api/common-list/subject-and-levels:
+    get:
+      tags: [Teacher API]
+      summary: Môn & cấp học
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /api/documents/list-documents:
+    post:
+      tags: [Teacher API]
+      summary: Danh sách tài liệu
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: OK }
+
+  /api/TeacherGroup/GetTeamPermissionObjs:
+    post:
+      tags: [Teacher API]
+      summary: Quyền nhóm GV
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /api/TrackJsException/SaveObj:
+    post:
+      tags: [Teacher API]
+      summary: Gửi JS exception
+      servers: [{ url: https://azt-teacher-api.azota.vn }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: OK }
+
+  # ========== STUDENT API ==========
+  /api/Auth/ExchangeAdswordToken:
+    get:
+      tags: [Student API]
+      summary: Đổi token Adsword
+      servers: [{ url: https://azt-student-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /api/common-list/provinces:
+    get:
+      tags: [Student API]
+      summary: Danh sách tỉnh thành
+      servers: [{ url: https://azt-student-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /api/FrontExam/GetExamObj:
+    get:
+      tags: [Student API]
+      summary: Chi tiết đề thi
+      servers: [{ url: https://azt-student-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /api/FrontExam/InitData:
+    get:
+      tags: [Student API]
+      summary: Dữ liệu khởi tạo
+      servers: [{ url: https://azt-student-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /api/FrontExam/MustViewAds:
+    get:
+      tags: [Student API]
+      summary: Phải xem quảng cáo?
+      servers: [{ url: https://azt-student-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /api/FrontExam/ReloadExamResult:
+    get:
+      tags: [Student API]
+      summary: Tải lại kết quả
+      servers: [{ url: https://azt-student-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /api/FrontJoinClassroomByExamHashId/GetClassroomsByExamHashId:
+    post:
+      tags: [Student API]
+      summary: Lớp theo hash đề
+      servers: [{ url: https://azt-student-api.azota.vn }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: OK }
+
+  /api/FrontJoinClassroomByExamHashId/JoinClassroomByExamHashId:
+    post:
+      tags: [Student API]
+      summary: Tham gia lớp qua hash
+      servers: [{ url: https://azt-student-api.azota.vn }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: OK }
+
+  /api/FrontVip/CheckVipObject:
+    get:
+      tags: [Student API]
+      summary: Kiểm tra VIP
+      servers: [{ url: https://azt-student-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /api/Parent/ListMyUserParents:
+    post:
+      tags: [Student API]
+      summary: Danh sách phụ huynh
+      servers: [{ url: https://azt-student-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /api/UserInfo/SaveUserAction:
+    post:
+      tags: [Student API]
+      summary: Lưu hành động user
+      servers: [{ url: https://azt-student-api.azota.vn }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: OK }
+
+  /api/test-market-feedbacks/questions/list:
+    post:
+      tags: [Student API]
+      summary: Câu hỏi feedback
+      servers: [{ url: https://azt-student-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  # ========== TRACKING API ==========
+  /azota-tracking/api/FrontAppFiredEvent/Collect:
+    post:
+      tags: [Tracking API]
+      summary: Thu thập sự kiện app
+      servers: [{ url: https://azt-tracking-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /azota-tracking/api/FrontAppFiredEvent/CollectByBeacon:
+    post:
+      tags: [Tracking API]
+      summary: Thu thập qua Beacon
+      servers: [{ url: https://azt-tracking-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /azota-tracking/api/FrontTrackEvent/SaveEventObj:
+    post:
+      tags: [Tracking API]
+      summary: Lưu sự kiện tracking
+      servers: [{ url: https://azt-tracking-api.azota.vn }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: OK }
+
+  # ========== AI API ==========
+  /ai/api/v1/user/is-locked:
+    get:
+      tags: [AI API]
+      summary: Kiểm tra tài khoản AI bị khóa
+      servers: [{ url: https://aiapi.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /ai/api/v1/recommendation/update-location:
+    post:
+      tags: [AI API]
+      summary: Cập nhật vị trí (recommendation)
+      servers: [{ url: https://aiapi.azota.vn }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: OK }
+
+  # ========== ADSWORD API ==========
+  /azota-adsword/api/v10/FrontProduct/GetSchoolLevelSubjectOfStudent:
+    get:
+      tags: [Adsword API]
+      summary: Môn/cấp học của HS
+      servers: [{ url: https://azt-adsword-api.azota.vn }]
+      responses:
+        '200': { description: OK }
+
+  /azota-adsword/api/v10/FrontProduct/ListRandomProducts:
+    post:
+      tags: [Adsword API]
+      summary: Danh sách sản phẩm ngẫu nhiên
+      servers: [{ url: https://azt-adsword-api.azota.vn }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: OK }

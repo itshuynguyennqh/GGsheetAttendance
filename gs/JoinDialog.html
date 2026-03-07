@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body { font-family: 'Segoe UI', sans-serif; padding: 15px; }
+      .sheet-item { margin-bottom: 8px; display: flex; align-items: center; }
+      input[type="checkbox"] { margin-right: 10px; width: 18px; height: 18px; }
+      .container { max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 4px; }
+      .footer { margin-top: 20px; }
+      button { 
+        width: 100%; padding: 10px; background-color: #34a853; color: white; 
+        border: none; border-radius: 4px; cursor: pointer; font-weight: bold; 
+      }
+      label { cursor: pointer; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <p style="font-size: 13px; color: #666;">Chọn các sheet tháng bạn muốn gộp lại thành một danh sách duy nhất:</p>
+    <div class="container">
+      <? sheetNames.forEach(function(name) { ?>
+        <div class="sheet-item">
+          <input type="checkbox" id="<?= name ?>" value="<?= name ?>" class="sheet-check">
+          <label for="<?= name ?>"><?= name ?></label>
+        </div>
+      <? }); ?>
+    </div>
+    
+    <div class="footer">
+      <button onclick="runJoin()">🔗 Bắt đầu gộp dữ liệu</button>
+    </div>
+
+    <script>
+      function runJoin() {
+        const checkboxes = document.querySelectorAll('.sheet-check:checked');
+        const selected = Array.from(checkboxes).map(cb => cb.value);
+        
+        if (selected.length < 1) {
+          alert("Vui lòng chọn ít nhất 1 sheet!");
+          return;
+        }
+
+        google.script.run
+          .withSuccessHandler(msg => {
+            alert(msg);
+            google.script.host.close();
+          })
+          .withFailureHandler(err => alert("Lỗi: " + err.message))
+          .processJoinSheets(selected);
+      }
+    </script>
+  </body>
+</html>

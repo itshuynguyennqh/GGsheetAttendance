@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mockup - Điểm danh | Renai</title>
+  <link rel="stylesheet" href="shared.css">
+  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600;700&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    .attendance-cell { cursor: cell; min-width: 48px; text-align: center; outline: none; }
+    .attendance-cell:focus { outline: 2px solid var(--renai-yellow); outline-offset: -2px; background: var(--renai-yellow-soft); }
+    .attendance-cell .cell-value { font-weight: 600; font-size: 1rem; }
+    .cell-has-note { position: relative; }
+  </style>
+</head>
+<body>
+  <header class="app-bar">
+    <h1 class="brand-serif">Renai</h1>
+    <span class="tagline">Nurturing Renaissance Minds</span>
+  </header>
+  <div class="layout">
+    <nav class="drawer">
+      <a href="classes.html">Lớp học</a>
+      <a href="sessions.html">Ca học</a>
+      <a href="students.html">Học sinh</a>
+      <a href="attendance.html" class="active">Điểm danh</a>
+      <a href="report.html">Báo cáo buổi</a>
+      <a href="azota.html">Quản lý Azota</a>
+      <a href="#">Dashboard</a>
+    </nav>
+    <main class="main">
+      <div class="card" style="margin-bottom: 16px;">
+        <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: center;">
+          <label>Lớp: <select style="padding: 8px; min-width: 140px;"><option>9.1</option><option>9.0</option><option>9.2</option></select></label>
+          <input type="text" placeholder="Tìm Mã HV, tên..." style="padding: 8px 12px; min-width: 180px; border: 1px solid var(--mui-border); border-radius: 6px;">
+          <a href="#dialog-confirm-changes" class="btn btn-primary">Lưu</a>
+          <span style="font-size: 0.875rem; color: var(--mui-text-secondary);">X=có mặt, B=bù, M=nghỉ phép, P=nghỉ · Ctrl+Alt+M = ghi chú</span>
+        </div>
+      </div>
+      <div class="card table-wrap">
+        <table class="mock-table attendance-grid">
+          <thead>
+            <tr>
+              <th style="min-width: 60px;">Mã HV</th>
+              <th style="min-width: 160px;">Học sinh</th>
+              <th style="min-width: 80px; text-align: center;" title="Ôn tập chương 2">6.2025-B1</th>
+              <th style="min-width: 80px; text-align: center;" title="Bài tập 1–5">6.2025-B2</th>
+              <th style="min-width: 80px; text-align: center;" title="Ca bù Tết">6.2025-B3</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>HV001</td>
+              <td>Nguyễn Văn A</td>
+              <td class="attendance-cell" tabindex="0"><span class="cell-value">X</span></td>
+              <td class="attendance-cell" tabindex="0"><span class="cell-value">X</span></td>
+              <td class="attendance-cell" tabindex="0"><span class="cell-value">P</span></td>
+            </tr>
+            <tr>
+              <td>HV002</td>
+              <td>Trần Thị B</td>
+              <td class="attendance-cell" tabindex="0"><span class="cell-value">X</span></td>
+              <td class="attendance-cell cell-has-note" tabindex="0" title="Bù buổi 1.2025-B1"><span class="cell-value">B</span> <span style="color: var(--mui-text-secondary); font-size: 0.7rem;">📝</span></td>
+              <td class="attendance-cell" tabindex="0"><span class="cell-value">X</span></td>
+            </tr>
+            <tr>
+              <td>HV003</td>
+              <td>Lê Văn C</td>
+              <td class="attendance-cell" tabindex="0"><span class="cell-value">M</span></td>
+              <td class="attendance-cell" tabindex="0"><span class="cell-value">X</span></td>
+              <td class="attendance-cell" tabindex="0"><span class="cell-value"></span></td>
+            </tr>
+            <tr>
+              <td>HV004</td>
+              <td>Phạm Thị D</td>
+              <td class="attendance-cell" tabindex="0"><span class="cell-value">X</span></td>
+              <td class="attendance-cell" tabindex="0"><span class="cell-value">X</span></td>
+              <td class="attendance-cell" tabindex="0"><span class="cell-value">X</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <p style="font-size: 0.75rem; color: var(--mui-text-secondary); margin: 12px 0 0;">Cột chỉ hiện ca đã bắt đầu và có điểm danh. Bấm ô rồi nhấn X/B/M/P (track local) → bấm <strong>Lưu</strong> để mở Dialog xác nhận thay đổi. <a href="#dialog-note" style="color: var(--renai-blue);">Ghi chú</a> (Ctrl+Alt+M).</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- Dialog xác nhận thay đổi (bấm Lưu) -->
+  <div id="dialog-confirm-changes" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content" style="max-width: 640px;">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Xác nhận thay đổi điểm danh</h3>
+      <p style="font-size: 0.875rem; color: var(--mui-text-secondary); margin: 0 0 12px;">Chọn các thay đổi cần áp dụng. Bỏ chọn để loại khỏi batch.</p>
+      <div class="table-wrap" style="max-height: 240px; overflow-y: auto;">
+        <table class="mock-table" style="font-size: 0.8rem;">
+          <thead>
+            <tr><th style="width: 36px;"></th><th>Học sinh</th><th>Ca học</th><th>Cũ</th><th>Mới</th><th>Ghi chú</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><input type="checkbox" checked></td><td>HV001</td><td>6.2025-B2</td><td>X</td><td>P</td><td>—</td></tr>
+            <tr><td><input type="checkbox" checked></td><td>HV002</td><td>6.2025-B2</td><td>—</td><td>B</td><td>Bù buổi 1</td></tr>
+            <tr><td><input type="checkbox" checked></td><td>HV003</td><td><select style="padding: 4px; font-size: 0.8rem;"><option>6.2025-B3</option><option>6.2025-B2</option></select></td><td>—</td><td>X</td><td>Chưa gắn ca</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="mock-dialog-actions" style="margin-top: 16px;"><a href="#" class="btn btn-outlined">Hủy</a><a href="#" class="btn btn-primary">Xác nhận</a></div>
+    </div>
+  </div>
+  <!-- Dialog ghi chú (Ctrl+Alt+M) -->
+  <div id="dialog-note" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Ghi chú điểm danh</h3>
+      <p style="font-size: 0.875rem; color: var(--mui-text-secondary); margin: 0 0 12px;">HV002 · 6.2025-B2 (Bù)</p>
+      <div class="form-group">
+        <label>Nội dung ghi chú</label>
+        <textarea rows="3" placeholder="VD: Bù buổi 1.2025-B1">Bù buổi 1.2025-B1</textarea>
+      </div>
+      <div class="mock-dialog-actions"><a href="#" class="btn btn-outlined">Hủy</a><a href="#" class="btn btn-primary">Lưu</a></div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mockup - Quản lý Azota | Renai</title>
+  <link rel="stylesheet" href="shared.css">
+  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600;700&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="app-bar">
+    <h1 class="brand-serif">Renai</h1>
+    <span class="tagline">Nurturing Renaissance Minds</span>
+  </header>
+  <div class="layout">
+    <nav class="drawer">
+      <a href="classes.html">Lớp học</a>
+      <a href="sessions.html">Ca học</a>
+      <a href="students.html">Học sinh</a>
+      <a href="attendance.html">Điểm danh</a>
+      <a href="report.html">Báo cáo buổi</a>
+      <a href="azota.html" class="active">Quản lý Azota</a>
+      <a href="#">Dashboard</a>
+    </nav>
+    <main class="main">
+      <div class="tabs">
+        <a href="#dialog-config">Cấu hình</a>
+        <a href="#dialog-map-class">Lớp học Azota</a>
+        <a href="#" class="active">Sync học sinh</a>
+        <a href="#">Báo cáo trạng thái</a>
+      </div>
+      <div class="card">
+        <p style="margin: 0 0 12px; color: var(--mui-text-secondary);">1 lớp Azota (Lớp 9 gộp) ↔ nhiều lớp app (9.0, 9.1, 9.2)</p>
+        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+          <label>Lớp Azota: <select style="padding: 8px; min-width: 160px;"><option>Lớp 9 gộp</option></select></label>
+          <a href="#" class="btn btn-primary">Kéo học sinh từ Azota</a>
+        </div>
+      </div>
+      <div class="card">
+        <h3 class="brand-serif" style="margin: 0 0 12px; font-size: 1rem;">Đã khớp (15)</h3>
+        <div class="table-wrap">
+          <table class="mock-table">
+            <thead>
+              <tr>
+                <th>Mã HV</th>
+                <th>Họ tên</th>
+                <th>Azota Code</th>
+                <th>Lớp app</th>
+                <th>Trạng thái</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>001</td>
+                <td>Nguyễn Văn A</td>
+                <td>001</td>
+                <td>9.1</td>
+                <td><span class="badge badge-success">Đã sync</span></td>
+              </tr>
+              <tr>
+                <td>002</td>
+                <td>Trần Thị B</td>
+                <td>002</td>
+                <td>9.1</td>
+                <td><span class="badge badge-success">Đã sync</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card highlight">
+        <h3 class="brand-serif" style="margin: 0 0 12px; font-size: 1rem;">Chưa khớp (3) — xử lý thủ công</h3>
+        <div class="table-wrap">
+          <table class="mock-table">
+            <thead>
+              <tr>
+                <th>Azota Code</th>
+                <th>Họ tên (Azota)</th>
+                <th>Hành động</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>018</td>
+                <td>Hoàng Văn E</td>
+                <td><a href="#dialog-add-azota-student" class="btn btn-outlined" style="text-decoration: none;">Thêm vào app</a></td>
+              </tr>
+              <tr>
+                <td>019</td>
+                <td>Võ Thị F</td>
+                <td><a href="#dialog-add-azota-student" class="btn btn-outlined" style="text-decoration: none;">Thêm vào app</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Mock dialogs Azota -->
+  <div id="dialog-config" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Cấu hình Azota</h3>
+      <div class="form-group"><label>Token Azota</label><input type="password" placeholder="Bearer eyJhbGciOi..."></div>
+      <p style="font-size: 0.75rem; color: var(--mui-text-secondary); margin: 0 0 12px;">Lấy token từ browser DevTools → Network → Headers</p>
+      <div class="mock-dialog-actions"><a href="#" class="btn btn-outlined">Hủy</a><a href="#" class="btn btn-primary">Lưu</a></div>
+    </div>
+  </div>
+  <div id="dialog-map-class" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content" style="max-width: 480px;">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Gắn lớp Azota với lớp app</h3>
+      <div class="form-group"><label>Lớp Azota</label><select><option>Lớp 9 gộp</option></select></div>
+      <div class="form-group"><label>Lớp app (chọn nhiều)</label><div><label><input type="checkbox" checked> 9.0</label><label><input type="checkbox" checked> 9.1</label><label><input type="checkbox" checked> 9.2</label></div></div>
+      <p style="font-size: 0.75rem; color: var(--mui-text-secondary); margin: 0 0 12px;">1 lớp Azota ↔ nhiều lớp app</p>
+      <div class="mock-dialog-actions"><a href="#" class="btn btn-outlined">Hủy</a><a href="#" class="btn btn-primary">Gắn</a></div>
+    </div>
+  </div>
+  <div id="dialog-add-azota-student" class="mock-dialog">
+    <a href="#" class="mock-dialog-overlay" aria-label="Đóng"></a>
+    <div class="mock-dialog-content" style="max-width: 480px;">
+      <a href="#" class="mock-dialog-close">&times;</a>
+      <h3 class="mock-dialog-title">Thêm học sinh Azota vào app</h3>
+      <p style="font-size: 0.875rem; margin: 0 0 12px;">Hoàng Văn E — Azota Code: 018</p>
+      <div class="form-group"><label>Mã HV (trùng Azota Code)</label><input type="text" value="018"></div>
+      <div class="form-group"><label>Họ tên</label><input type="text" value="Hoàng Văn E"></div>
+      <div class="form-group"><label>Lớp app</label><select><option>9.0</option><option>9.1</option><option>9.2</option></select></div>
+      <div class="mock-dialog-actions"><a href="#" class="btn btn-outlined">Hủy</a><a href="#" class="btn btn-primary">Thêm</a></div>
+    </div>
+  </div>
+</body>
+</html>

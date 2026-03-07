@@ -1,0 +1,25 @@
+# Không push file cũ đã xóa (đã refactor vào gs/)
+Mã.js
+
+# Không push thư mục dev (web local, không dùng trên App Script)
+dev/**
+
+# Không push node_modules
+node_modules/**
+
+# Không push các file website (frontend và backend)
+app/**
+server/**
+
+# Không push các file cấu hình website
+package.json
+package-lock.json
+start-backend.ps1
+start-dev.ps1
+
+# Không push dữ liệu và mockups
+data/**
+mockups/**
+
+# Tùy chọn: không push docs (tài liệu, không cần trên App Script)
+# docs/**
