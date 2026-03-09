@@ -74,23 +74,26 @@ def _recognition_variants(norm_rec: str) -> List[str]:
 def _effective_match_score(
     ratio_score: float,
     partial_score: float,
+    token_sort_score: float,
     len_rec: int,
     len_student: int,
     rec_has_digits: bool,
+    rec_digit_count: int = 0,
 ) -> float:
     """
-    Tránh khớp sai 100%: không dựa mỗi partial_ratio (E. Ngan vs Trình Thúy Ngân, Thay TRang vs Đặng Mai Trang).
-    - Kết hợp ratio + partial; khi ratio thấp mà partial cao => cap điểm.
-    - Chuỗi OCR quá ngắn so với tên đầy đủ => cap.
-    - OCR có số (nhiễu như D6Anht) => cap mạnh.
+    Kết hợp ratio + partial + token_sort_ratio.
+    Token sort xử lý "Nguyễn Văn An" vs "An Nguyễn Văn".
+    OCR có số => cap; >2 chữ số => coi là nhiễu, giảm mạnh.
     """
-    combined = 0.55 * ratio_score + 0.45 * partial_score
+    combined = 0.4 * ratio_score + 0.3 * partial_score + 0.3 * token_sort_score
     if ratio_score < 45 and partial_score > 85:
         combined = min(combined, 82.0)
     if len_rec <= 6 and len_student >= 14:
         combined = min(combined, 85.0)
     if rec_has_digits:
-        combined = min(combined, 88.0)
+        combined = min(combined, 85.0)
+        if rec_digit_count > 2:
+            combined = min(combined, 70.0)
         if ratio_score < 40:
             combined = min(combined, 75.0)
     return combined
@@ -100,6 +103,7 @@ def _score_rec_against_variants(
     rec_variants: List[str],
     student_variants: List[str],
     rec_has_digits: bool = False,
+    rec_digit_count: int = 0,
 ) -> float:
     best = -1.0
     for r in rec_variants:
@@ -108,8 +112,10 @@ def _score_rec_against_variants(
             len_s = len(s)
             ratio_score = fuzz.ratio(r, s)
             partial_score = fuzz.partial_ratio(r, s)
+            token_sort_score = fuzz.token_sort_ratio(r, s)
             eff = _effective_match_score(
-                ratio_score, partial_score, len_rec, len_s, rec_has_digits
+                ratio_score, partial_score, token_sort_score,
+                len_rec, len_s, rec_has_digits, rec_digit_count,
             )
             best = max(best, eff)
     return best
@@ -132,6 +138,7 @@ def find_best_match(
         return None
     rec_variants = _recognition_variants(norm_rec)
     rec_has_digits = any(c.isdigit() for c in (recognized_name or ""))
+    rec_digit_count = sum(1 for c in (recognized_name or "") if c.isdigit())
     best_index = -1
     best_score = -1.0
     for i, student in enumerate(student_names):
@@ -140,7 +147,9 @@ def find_best_match(
         if not student_norm_vars:
             student_norm_vars = [normalize_name(student)]
         score = _score_rec_against_variants(
-            rec_variants, student_norm_vars, rec_has_digits=rec_has_digits
+            rec_variants, student_norm_vars,
+            rec_has_digits=rec_has_digits,
+            rec_digit_count=rec_digit_count,
         )
         if score > best_score:
             best_score = score
@@ -174,12 +183,15 @@ def _best_score_below_threshold(recognized_name: str, student_names: List[str], 
         return 0.0
     rec_variants = _recognition_variants(norm_rec)
     rec_has_digits = any(c.isdigit() for c in (recognized_name or ""))
+    rec_digit_count = sum(1 for c in (recognized_name or "") if c.isdigit())
     best = -1.0
     for student in student_names:
         name_vars = get_student_name_variants(student)
         student_norm_vars = [normalize_name(v) for v in name_vars if normalize_name(v)] or [normalize_name(student)]
         score = _score_rec_against_variants(
-            rec_variants, student_norm_vars, rec_has_digits=rec_has_digits
+            rec_variants, student_norm_vars,
+            rec_has_digits=rec_has_digits,
+            rec_digit_count=rec_digit_count,
         )
         if score > best:
             best = score

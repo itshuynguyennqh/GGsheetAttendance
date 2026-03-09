@@ -47,6 +47,9 @@ pip install -r requirements.txt
 
 - Mặc định (EasyOCR): `uvicorn main:app --reload --port 8000`
 - Chữ viết tay / tên Việt (PaddleOCR): `set OCR_ENGINE=paddleocr` rồi chạy uvicorn như trên.
+- **Tiền xử lý chữ viết tay** (Gaussian + Adaptive Threshold, upscale): `set PREPROCESS_HANDWRITING=1` (tự động bật khi `OCR_ENGINE=paddleocr`)
+- **Model server** (RAM 16GB+): `set OCR_MODEL=latin_ppocrv5_server`
+- **OpenVINO** (tối ưu Intel): `pip install onnxruntime-openvino` rồi `set USE_OPENVINO=1`
 
 ### Windows (PowerShell)
 

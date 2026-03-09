@@ -20,7 +20,7 @@ from schemas import (
     MatchByImageRequest,
     MatchByImageResponse,
 )
-from image_utils import preprocess_for_ocr
+from image_utils import preprocess_for_ocr, enhance_for_handwriting_ocr, PREPROCESS_HANDWRITING
 from ocr_engine import recognize_text, ensure_reader_loaded, OCR_ENGINE
 from matcher import match_names
 
@@ -44,11 +44,19 @@ warnings.filterwarnings(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Pre-load OCR models at startup so first /ocr requests don't return 500."""
+    """Pre-load OCR models and warm-up with a fake image so first /ocr requests don't lag."""
     import asyncio
+    import numpy as np
     log.info("OCR engine: %s (set OCR_ENGINE=paddleocr for handwriting/Vietnamese names)", OCR_ENGINE)
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, ensure_reader_loaded, "vi")
+    # Warm-up: run OCR on a small fake image to avoid first-request lag
+    def _warmup():
+        fake_img = np.zeros((32, 100, 3), dtype=np.uint8)
+        fake_img.fill(255)
+        recognize_text(fake_img, "vi")
+    await loop.run_in_executor(None, _warmup)
+    log.info("OCR warm-up done")
     yield
 
 
@@ -68,11 +76,17 @@ def health():
     return {"ok": True}
 
 
+def _should_enhance_handwriting() -> bool:
+    return PREPROCESS_HANDWRITING or OCR_ENGINE == "paddleocr"
+
+
 @app.post("/ocr", response_model=OcrResponse)
 def ocr(req: OcrRequest):
     """Decode base64 image, preprocess with OpenCV, run OCR, return text."""
     try:
         img = preprocess_for_ocr(req.image_base64)
+        if _should_enhance_handwriting():
+            img = enhance_for_handwriting_ocr(img)
         text = recognize_text(img, language=req.language or "vi")
         return OcrResponse(text=text or "")
     except ValueError as e:
