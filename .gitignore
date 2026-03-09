@@ -29,3 +29,6 @@ Thumbs.db
 
 # Google/Clasp (nếu chứa thông tin nhạy cảm)
 .clasp.json
+
+# Data
+data/azota-exam-*/
