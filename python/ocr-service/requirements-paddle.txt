@@ -3,5 +3,10 @@
 # Bước 2: pip install -r requirements-paddle.txt
 #        (Windows CPU: có thể cần python -m pip install paddlepaddle==3.2.0 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/)
 # Bước 3: set OCR_ENGINE=paddleocr && uvicorn main:app --reload --port 8000
+#
+# OpenVINO (tối ưu Intel i5): pip install onnxruntime-openvino
+#   rồi set USE_OPENVINO=1
+#
+# Model server cho tiếng Việt (RAM 16GB+): set OCR_MODEL=latin_ppocrv5_server
 paddlepaddle>=3.0.0
 paddleocr>=3.0.0

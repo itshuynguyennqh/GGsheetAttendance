@@ -13,6 +13,10 @@ OCR_ENGINE = os.environ.get("OCR_ENGINE", "easyocr").strip().lower()
 if OCR_ENGINE not in ("easyocr", "paddleocr"):
     OCR_ENGINE = "easyocr"
 
+# Model: latin_ppocrv5_server = latin_PP-OCRv5_server_rec (chỉ cho tiếng Việt, cần RAM 16GB+)
+OCR_MODEL = os.environ.get("OCR_MODEL", "").strip().lower()
+USE_OPENVINO = os.environ.get("USE_OPENVINO", "").strip() in ("1", "true", "yes")
+
 # Set oneDNN/MKLDNN off before any paddle import (Paddle 3.3+ Windows CPU bug #77340)
 if OCR_ENGINE == "paddleocr":
     os.environ["FLAGS_use_mkldnn"] = "0"
@@ -33,15 +37,31 @@ def _get_reader_easyocr(lang: str = "vi"):
 
 def _get_reader_paddleocr(lang: str = "vi"):
     from paddleocr import PaddleOCR
-    # Latin model (latin_PP-OCRv5_mobile_rec) supports Vietnamese + handwriting better
-    use_lang = "la" if lang == "vi" else lang  # la = Latin script (includes Vietnamese)
-    return PaddleOCR(
+    import re
+    use_lang = "la" if lang == "vi" else lang  # la = Latin (includes Vietnamese)
+    kwargs = dict(
         lang=use_lang,
         use_doc_orientation_classify=False,
         use_doc_unwarping=False,
         use_textline_orientation=False,
         device="cpu",
     )
+    if USE_OPENVINO:
+        kwargs["use_onnx"] = True
+    if OCR_MODEL == "latin_ppocrv5_server" and lang == "vi":
+        kwargs["rec_model_name"] = "latin_PP-OCRv5_server_rec"
+    while True:
+        try:
+            return PaddleOCR(**kwargs)
+        except ValueError as e:
+            m = re.search(r"Unknown argument:\s*(\w+)", str(e), re.I)
+            if m:
+                name = m.group(1)
+                if name in kwargs:
+                    log.warning("PaddleOCR does not support %s, removing: %s", name, str(e)[:60])
+                    kwargs.pop(name)
+                    continue
+            raise
 
 
 def _get_reader(lang: str = "vi"):
