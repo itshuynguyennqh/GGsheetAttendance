@@ -10,6 +10,28 @@ var AZOTA_EXAM_RESULT_BASE = 'https://azota.vn/private-api/exams';
 var AZOTA_TEACHER_API_BASE = 'https://azt-teacher-api.azota.vn';
 var SIMILARITY_THRESHOLD = 0.6;
 var GEMINI_NAME_PROMPT = 'Đây là ảnh chứa tên học sinh viết tay. Chỉ trả về đúng tên học sinh (họ và tên), không thêm ký tự, số hay giải thích. Nếu không đọc được hãy trả về chuỗi rỗng.';
+/** true sau lần gọi Gemini đầu tiên trả về API key hết hạn / không hợp lệ — tránh gọi lặp 29 lần */
+var AZOTA_GEMINI_KEY_FATAL = false;
+/**
+ * Gemini 3.1 Flash Lite: giới hạn an toàn ~15 request/phút → gọi tuần tự, cách nhau tối thiểu 4s.
+ * (Song song nhiều request dễ vượt RPM / 429.)
+ */
+var GEMINI_RPM_LIMIT = 15;
+var GEMINI_RPM_WINDOW_MS = 60000;
+var GEMINI_MIN_INTERVAL_MS = Math.ceil(GEMINI_RPM_WINDOW_MS / GEMINI_RPM_LIMIT); // 4000 ms
+var _geminiLastCallMs = 0;
+
+/** Giữ tối đa GEMINI_RPM_LIMIT request/phút (khoảng cách tối thiểu giữa hai lần gọi). */
+function _throttleGeminiBeforeCall() {
+  var now = Date.now();
+  var elapsed = now - _geminiLastCallMs;
+  if (_geminiLastCallMs > 0 && elapsed < GEMINI_MIN_INTERVAL_MS) {
+    var wait = GEMINI_MIN_INTERVAL_MS - elapsed;
+    _logExam('GEMINI', 'RPM limit ' + GEMINI_RPM_LIMIT + '/min: cho ' + wait + 'ms');
+    Utilities.sleep(wait);
+  }
+  _geminiLastCallMs = Date.now();
+}
 
 /**
  * Hàm helper: Cập nhật Gemini API Key trong Script Properties.
@@ -70,7 +92,29 @@ function normalizeBearerToken(s) {
   return t;
 }
 
+/**
+ * Menu mặc định: sau OCR + khớp tên → mở dialog xác minh → bấm "Ghi vào sheet" mới ghi.
+ */
 function pullAzotaExamResult() {
+  pullAzotaExamResultCore(true);
+}
+
+/**
+ * Ghi thẳng vào BaoCao không qua dialog (nhanh; rủi ro khớp sai tên).
+ */
+function pullAzotaExamResultDirect() {
+  pullAzotaExamResultCore(false);
+}
+
+/**
+ * Giống pullAzotaExamResult (dialog xác minh). Giữ tên hàm cho menu cũ / tài liệu.
+ */
+function pullAzotaExamResultWithDialog() {
+  pullAzotaExamResultCore(true);
+}
+
+function pullAzotaExamResultCore(useDialog) {
+  AZOTA_GEMINI_KEY_FATAL = false;
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var ui = SpreadsheetApp.getUi();
 
@@ -239,7 +283,6 @@ function pullAzotaExamResult() {
       return;
     }
 
-    var recognized = [];
     var total = items.length;
     var ocrFailedCount = 0;
     var geminiKeyIssue = false;
@@ -249,28 +292,98 @@ function pullAzotaExamResult() {
       _logExam('DEBUG', 'First item sample: ' + JSON.stringify(items[0]).substring(0, 500));
     }
     // #endregion
+    var recognized = [];
+    recognized.length = items.length;
+    var geminiJobs = [];
+    var needHttp = [];
     for (var idx = 0; idx < items.length; idx++) {
-      ss.toast('Đọc tên ảnh ' + (idx + 1) + '/' + total + '...', 'OCR', 1);
       var item = items[idx];
       var mark = getMarkFromItem(item);
-      var imageUrl = getNameImageUrlFromItem(item);
+      var imageUrl = getNameImageUrlFromItem(item) || '';
       var attendeeName = item.attendeeName || '';
       _logExam('OCR', 'item ' + (idx + 1) + '/' + total + ' mark=' + mark + ' imageUrl=' + (imageUrl ? imageUrl.substring(0, 50) + '...' : 'null') + ' attendeeName=' + (attendeeName || 'null'));
-      var recognizedName = '';
-      if (attendeeName && attendeeName.trim()) {
-        recognizedName = attendeeName.trim();
-        _logExam('OCR', 'item ' + (idx + 1) + ' using attendeeName="' + recognizedName + '"');
-      } else if (imageUrl) {
-        recognizedName = fetchImageAndRecognizeName(imageUrl, token, cookie, geminiKey);
-        _logExam('OCR', 'item ' + (idx + 1) + ' recognizedName="' + recognizedName + '"');
-        if (!recognizedName && geminiKey) {
+      if (attendeeName && String(attendeeName).trim()) {
+        recognized[idx] = { mark: mark, nameImageUrl: imageUrl, recognizedName: String(attendeeName).trim() };
+        _logExam('OCR', 'item ' + (idx + 1) + ' using attendeeName="' + recognized[idx].recognizedName + '"');
+      } else if (imageUrl && geminiKey && !AZOTA_GEMINI_KEY_FATAL) {
+        recognized[idx] = { mark: mark, nameImageUrl: imageUrl, recognizedName: '' };
+        if (imageUrl.indexOf('data:image/') === 0 && imageUrl.indexOf(';base64,') > 0) {
+          var mimeM = imageUrl.match(/data:image\/([^;]+)/);
+          geminiJobs.push({
+            idx: idx,
+            base64: imageUrl.substring(imageUrl.indexOf(';base64,') + 8),
+            mime: mimeM ? 'image/' + mimeM[1] : 'image/jpeg'
+          });
+        } else {
+          needHttp.push({ idx: idx, imageUrl: imageUrl, mark: mark });
+        }
+      } else {
+        recognized[idx] = { mark: mark, nameImageUrl: imageUrl, recognizedName: '' };
+      }
+    }
+    if (needHttp.length > 0) {
+      _logExam('OCR', 'fetchAll ảnh HTTP song song: ' + needHttp.length);
+      var httpHeaders = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://azota.vn/',
+        'Accept': 'image/*,*/*'
+      };
+      if (token) httpHeaders['Authorization'] = 'Bearer ' + token;
+      if (cookie && String(cookie).trim()) httpHeaders['Cookie'] = String(cookie).trim();
+      var httpReqs = [];
+      for (var h = 0; h < needHttp.length; h++) {
+        httpReqs.push({ url: needHttp[h].imageUrl, method: 'get', muteHttpExceptions: true, headers: httpHeaders });
+      }
+      var httpRes = UrlFetchApp.fetchAll(httpReqs);
+      for (var h2 = 0; h2 < needHttp.length; h2++) {
+        if (httpRes[h2].getResponseCode() === 200) {
+          var blob = httpRes[h2].getBlob();
+          geminiJobs.push({
+            idx: needHttp[h2].idx,
+            base64: Utilities.base64Encode(blob.getBytes()),
+            mime: blob.getContentType() || 'image/jpeg'
+          });
+        } else {
+          _logExam('IMAGE', 'HTTP image fail idx=' + needHttp[h2].idx + ' code=' + httpRes[h2].getResponseCode());
+        }
+      }
+    }
+    _logExam('OCR', 'Gemini tuan tu (max ' + GEMINI_RPM_LIMIT + ' req/phut), jobs=' + geminiJobs.length);
+    if (geminiJobs.length > 0 && geminiKey && !AZOTA_GEMINI_KEY_FATAL) {
+      var geminiUrl = typeof getGeminiUrl === 'function' ? getGeminiUrl() : 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+      for (var g = 0; g < geminiJobs.length && !AZOTA_GEMINI_KEY_FATAL; g++) {
+        var j = geminiJobs[g];
+        ss.toast('Gemini OCR ' + (g + 1) + '/' + geminiJobs.length + '...', 'OCR', 4);
+        _throttleGeminiBeforeCall();
+        var payload1 = {
+          contents: [{
+            parts: [
+              { text: GEMINI_NAME_PROMPT },
+              { inline_data: { mime_type: j.mime || 'image/jpeg', data: j.base64 } }
+            ]
+          }]
+        };
+        var resp1 = UrlFetchApp.fetch(geminiUrl, {
+          method: 'post',
+          contentType: 'application/json',
+          headers: { 'X-goog-api-key': geminiKey },
+          payload: JSON.stringify(payload1),
+          muteHttpExceptions: true
+        });
+        var idxJ = j.idx;
+        var text = _parseGeminiFetchResponse(resp1);
+        recognized[idxJ].recognizedName = text;
+        _logExam('OCR', 'item ' + (idxJ + 1) + ' recognizedName="' + text + '"');
+        if (!text && geminiKey) {
           ocrFailedCount++;
           geminiKeyIssue = true;
         }
-        Utilities.sleep(300);
+        _logExam('GEMINI', 'Recognized text="' + text + '" (idx ' + idxJ + ')');
       }
-      recognized.push({ mark: mark, nameImageUrl: imageUrl, recognizedName: recognizedName });
     }
+    var recognizedOrdered = [];
+    for (var ord = 0; ord < items.length; ord++) recognizedOrdered.push(recognized[ord]);
+    recognized = recognizedOrdered;
     
     // #region agent log
     if (ocrFailedCount > 0) {
@@ -281,25 +394,79 @@ function pullAzotaExamResult() {
     }
     // #endregion
 
+    if (AZOTA_GEMINI_KEY_FATAL) {
+      ui.alert(
+        '❌ Gemini API key không dùng được\n\n' +
+        'Google trả lỗi: API key expired / API_KEY_INVALID.\n\n' +
+        'Cách xử lý:\n' +
+        '1. Vào https://aistudio.google.com/app/apikey\n' +
+        '2. Tạo API key mới (hoặc bật lại key cũ nếu còn hạn)\n' +
+        '3. Menu: Báo cáo Buổi → 🔑 Cập nhật Gemini API Key\n' +
+        '4. Dán key mới vào Script Properties (GEMINI_API_KEY)\n\n' +
+        'Sau đó chạy lại kéo điểm chấm Azota.'
+      );
+      return;
+    }
+
+    while (recognized.length < items.length) {
+      var itemRest = items[recognized.length];
+      recognized.push({
+        mark: getMarkFromItem(itemRest),
+        nameImageUrl: getNameImageUrlFromItem(itemRest),
+        recognizedName: ''
+      });
+    }
+
     var diemCol = colMapping.diemCham >= 0 ? colMapping.diemCham : colMapping.hoTen + 2;
     var anhCol = colMapping.anhTen >= 0 ? colMapping.anhTen : diemCol + 1;
     _logExam('WRITE', 'diemCol(0-based)=' + diemCol + ' anhCol(0-based)=' + anhCol);
 
     var matchedCount = 0;
     var usedRow = {};
+    var resultsForDialog = useDialog ? [] : null;
+
     for (var r = 0; r < recognized.length; r++) {
       var rec = recognized[r];
       var best = findBestMatch(rec.recognizedName, baoCaoNames);
+      var sheetRow = -1;
+      var matchedName = '';
+      var scoreNum = 0;
       if (best && best.index >= 0 && !usedRow[best.index]) {
         usedRow[best.index] = true;
-        var sheetRow = rowIndices[best.index];
-        baoCaoSheet.getRange(sheetRow, diemCol + 1).setValue(rec.mark);
-        if (rec.nameImageUrl) baoCaoSheet.getRange(sheetRow, anhCol + 1).setValue(rec.nameImageUrl);
+        sheetRow = rowIndices[best.index];
+        matchedName = baoCaoNames[best.index] || '';
+        scoreNum = Math.round((best.score || 0) * 100);
+        if (!useDialog) {
+          baoCaoSheet.getRange(sheetRow, diemCol + 1).setValue(markValueForSheet(rec.mark));
+          if (rec.nameImageUrl) baoCaoSheet.getRange(sheetRow, anhCol + 1).setValue(rec.nameImageUrl);
+        }
         matchedCount++;
-        _logExam('MATCH', 'recognized="' + rec.recognizedName + '" -> row ' + sheetRow + ' (' + baoCaoNames[best.index] + ') score=' + best.score);
+        _logExam('MATCH', 'recognized="' + rec.recognizedName + '" -> row ' + sheetRow + ' (' + matchedName + ') score=' + scoreNum);
       } else {
         _logExam('NOMATCH', 'recognized="' + rec.recognizedName + '" no match or row already used');
       }
+      if (useDialog) {
+        resultsForDialog.push({
+          mark: rec.mark,
+          nameImageUrl: rec.nameImageUrl || '',
+          recognizedName: rec.recognizedName || '',
+          matchedName: matchedName,
+          matchedSheetRow: sheetRow,
+          score: scoreNum
+        });
+      }
+    }
+
+    if (useDialog) {
+      var unmatchedForDialog = [];
+      for (var u = 0; u < rowIndices.length; u++) {
+        if (!usedRow[u]) {
+          unmatchedForDialog.push({ sheetRow: rowIndices[u], name: baoCaoNames[u] || '' });
+        }
+      }
+      var sheetContext = { diemCol: diemCol + 1, anhCol: anhCol + 1 };
+      showAzotaResultDialog(resultsForDialog, unmatchedForDialog, sheetContext);
+      return;
     }
 
     _logExam('DONE', 'matchedCount=' + matchedCount + '/' + total);
@@ -584,6 +751,12 @@ function getMarkFromItem(item) {
   return '';
 }
 
+/** Ghi điểm lên sheet: dấu phẩy làm thập phân (8,25 thay vì 8.25). */
+function markValueForSheet(mark) {
+  if (mark == null || mark === '') return '';
+  return String(mark).trim().replace(/\./g, ',');
+}
+
 function getNameImageUrlFromItem(item) {
   if (item == null) return '';
   // #region agent log
@@ -618,6 +791,7 @@ function getNameImageUrlFromItem(item) {
  */
 function fetchImageAndRecognizeName(imageUrl, azotaToken, azotaCookie, geminiApiKey) {
   try {
+    if (AZOTA_GEMINI_KEY_FATAL) return '';
     // #region agent log
     _logExam('IMAGE', 'Processing imageUrl (first 60): ' + imageUrl.substring(0, 60) + '...');
     // #endregion
@@ -666,6 +840,40 @@ function fetchImageAndRecognizeName(imageUrl, azotaToken, azotaCookie, geminiApi
 }
 
 /**
+ * Parse HTTP response từ Gemini generateContent (dùng cho fetchAll batch).
+ */
+function _parseGeminiFetchResponse(response) {
+  var geminiCode = response.getResponseCode();
+  var geminiBody = response.getContentText();
+  _logExam('GEMINI', 'Gemini responseCode=' + geminiCode + ' bodyLength=' + (geminiBody && geminiBody.length));
+  if (geminiCode !== 200) {
+    _logExam('GEMINI', 'Gemini non-200 body: ' + (geminiBody || '').substring(0, 300));
+    try {
+      var errJ = JSON.parse(geminiBody);
+      var errMsg = (errJ.error && errJ.error.message) ? String(errJ.error.message) : '';
+      var errReason = '';
+      if (errJ.error && errJ.error.details && errJ.error.details[0] && errJ.error.details[0].reason) {
+        errReason = String(errJ.error.details[0].reason);
+      }
+      if (errReason === 'API_KEY_INVALID' || errMsg.indexOf('expired') >= 0 || errMsg.indexOf('API key') >= 0) {
+        AZOTA_GEMINI_KEY_FATAL = true;
+        _logExam('GEMINI', 'API key hết hạn hoặc không hợp lệ — dừng batch OCR');
+      }
+    } catch (e2) {}
+    return '';
+  }
+  try {
+    var result = JSON.parse(geminiBody);
+    if (!result.candidates || !result.candidates[0] || !result.candidates[0].content || !result.candidates[0].content.parts) {
+      return '';
+    }
+    return (result.candidates[0].content.parts[0].text || '').trim();
+  } catch (parseErr) {
+    return '';
+  }
+}
+
+/**
  * Gọi Gemini Vision: ảnh (inline_data) + prompt đọc tên học sinh viết tay.
  * Nhận geminiApiKey như parameter (từ Properties hoặc dialog).
  */
@@ -678,6 +886,7 @@ function recognizeHandwrittenName(imageBase64, mimeType, geminiApiKey) {
     return '';
   }
   var url = typeof getGeminiUrl === 'function' ? getGeminiUrl() : 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+  _throttleGeminiBeforeCall();
   _logExam('GEMINI', 'Calling Gemini url (model) for vision');
   var payload = {
     contents: [{
@@ -700,15 +909,21 @@ function recognizeHandwrittenName(imageBase64, mimeType, geminiApiKey) {
     _logExam('GEMINI', 'Gemini responseCode=' + geminiCode + ' bodyLength=' + geminiBody.length);
     if (geminiCode !== 200) {
       _logExam('GEMINI', 'Gemini non-200 body: ' + geminiBody.substring(0, 300));
-      if (geminiCode === 403) {
-        try {
-          var errJson = JSON.parse(geminiBody);
-          if (errJson.error && errJson.error.message && errJson.error.message.indexOf('leaked') >= 0) {
-            _logExam('GEMINI', 'ERROR: API key bị leak. Cần tạo key mới tại https://aistudio.google.com/app/apikey');
-            Logger.log('⚠️ GEMINI API KEY BỊ LEAK - Cần tạo key mới và cập nhật trong Script Properties (GEMINI_API_KEY)');
-          }
-        } catch (e) {}
-      }
+      try {
+        var errJ = JSON.parse(geminiBody);
+        var errMsg = (errJ.error && errJ.error.message) ? String(errJ.error.message) : '';
+        var errReason = '';
+        if (errJ.error && errJ.error.details && errJ.error.details[0] && errJ.error.details[0].reason) {
+          errReason = String(errJ.error.details[0].reason);
+        }
+        if (errReason === 'API_KEY_INVALID' || errMsg.indexOf('expired') >= 0 || errMsg.indexOf('API key') >= 0) {
+          AZOTA_GEMINI_KEY_FATAL = true;
+          _logExam('GEMINI', 'API key hết hạn hoặc không hợp lệ — dừng gọi OCR tiếp');
+        }
+        if (geminiCode === 403 && errMsg.indexOf('leaked') >= 0) {
+          _logExam('GEMINI', 'ERROR: API key bị leak. Tạo key mới tại https://aistudio.google.com/app/apikey');
+        }
+      } catch (e2) {}
       return '';
     }
   var result;
@@ -785,6 +1000,70 @@ function similarityScore(normA, normB) {
   return 1 - lev / maxLen;
 }
 
+/** Tách tên đã chuẩn hóa thành mảng từ (họ / đệm / tên). */
+function nameTokensNormalized(norm) {
+  if (!norm || typeof norm !== 'string') return [];
+  return norm.trim().split(/\s+/).filter(function (t) {
+    return t.length > 0;
+  });
+}
+
+/**
+ * Điểm khớp 0..1: tên đọc được thường chỉ có tên hoặc đệm+tên;
+ * tên trong lớp có thể đủ họ đệm tên hoặc ngắn — so khớp theo hậu tố từ, chuỗi con, subsequence.
+ */
+function nameMatchScore(normRec, normFull) {
+  if (!normRec || !normFull) return 0;
+  if (normRec === normFull) return 1;
+  var rTok = nameTokensNormalized(normRec);
+  var fTok = nameTokensNormalized(normFull);
+  if (rTok.length === 0) return 0;
+
+  if (normFull.indexOf(normRec) >= 0 && normRec.length >= 2) return 0.94;
+  if (normRec.indexOf(normFull) >= 0 && normFull.length >= 2) return 0.96;
+
+  if (rTok.length <= fTok.length) {
+    var suffixOk = true;
+    for (var k = 0; k < rTok.length; k++) {
+      if (rTok[rTok.length - 1 - k] !== fTok[fTok.length - 1 - k]) {
+        suffixOk = false;
+        break;
+      }
+    }
+    if (suffixOk) {
+      return 0.76 + 0.2 * Math.min(1, rTok.length / Math.max(fTok.length, 1));
+    }
+  }
+
+  var pi = 0;
+  var fi = 0;
+  for (fi = 0; fi < fTok.length && pi < rTok.length; fi++) {
+    if (rTok[pi] === fTok[fi]) {
+      pi++;
+    } else if (similarityScore(rTok[pi], fTok[fi]) >= 0.88) {
+      pi++;
+    }
+  }
+  if (pi === rTok.length) {
+    return 0.66 + 0.26 * Math.min(1, rTok.length / Math.max(fTok.length, 1));
+  }
+
+  if (rTok.length === 1 && fTok.length >= 1) {
+    var last = fTok[fTok.length - 1];
+    var sim = similarityScore(rTok[0], last);
+    if (sim >= 0.9) return 0.7 + 0.22 * sim;
+    if (rTok[0].length >= 2 && last.indexOf(rTok[0]) >= 0) return 0.69;
+    if (last.length >= 2 && rTok[0].indexOf(last) >= 0) return 0.67;
+  }
+
+  if (rTok.length === 2 && fTok.length >= 2) {
+    var sim2 = similarityScore(rTok.join(' '), fTok.slice(-2).join(' '));
+    if (sim2 >= 0.82) return 0.72 + 0.2 * sim2;
+  }
+
+  return similarityScore(normRec, normFull);
+}
+
 /**
  * Tìm trong danh sách BaoCao (baoCaoNameList) bản ghi khớp nhất với recognizedName.
  * Trả về { index, score } hoặc null nếu dưới ngưỡng.
@@ -797,7 +1076,7 @@ function findBestMatch(recognizedName, baoCaoNameList) {
   var bestScore = SIMILARITY_THRESHOLD;
   for (var i = 0; i < baoCaoNameList.length; i++) {
     var normB = normalizeNameForMatch(baoCaoNameList[i]);
-    var score = similarityScore(normRec, normB);
+    var score = nameMatchScore(normRec, normB);
     if (score > bestScore) {
       bestScore = score;
       bestIndex = i;
@@ -811,6 +1090,154 @@ function findBestMatch(recognizedName, baoCaoNameList) {
  * Tìm index cột: Họ tên, Mã HV, Điểm chấm Azota, Ảnh tên Azota.
  * Dùng findColumnIndex từ BTVNLogic.js nếu có; không thì tìm đơn giản theo header row.
  */
+function showAzotaResultDialog(results, unmatched, sheetContext) {
+  try {
+    var payload = JSON.stringify({ r: results, u: unmatched || [], s: sheetContext || {} });
+    var blob = Utilities.newBlob(payload, 'application/json; charset=UTF-8', 'payload.json');
+    var b64 = Utilities.base64Encode(blob.getBytes());
+    _logExam('DIALOG', 'payload b64 length=' + b64.length + ' rows=' + (results && results.length));
+    var html =
+      '<!DOCTYPE html><html lang="vi"><head><base target="_top"><meta charset="UTF-8">' +
+      '<style>*{box-sizing:border-box}body{font-family:"Segoe UI",Arial,sans-serif;padding:12px;margin:0;font-size:13px}' +
+      'h3{margin:0 0 10px;color:#1a73e8}.layout{display:flex;gap:14px;align-items:flex-start}' +
+      '.table-wrap{flex:1;min-width:0;overflow:auto;border:1px solid #ddd;border-radius:8px;max-height:68vh}' +
+      'table{width:100%;border-collapse:collapse}th,td{padding:8px 6px;border-bottom:1px solid #eee;vertical-align:middle}' +
+      'th{background:#1a73e8;color:#fff;font-weight:600}tr.drop-target{outline:2px dashed #1a73e8;outline-offset:-2px;background:#e3f2fd}' +
+      '.drop-cell{min-height:36px;border-radius:6px;padding:6px;transition:background .15s}' +
+      '.score-ok{color:#1b5e20;font-weight:700}.score-warn{color:#e65100;font-weight:600}' +
+      '.sidebar{width:260px;flex-shrink:0;border:2px solid #ff9800;border-radius:10px;padding:10px;background:#fff8e1;max-height:68vh;overflow-y:auto}' +
+      '.chip{display:inline-block;margin:4px;padding:8px 12px;background:#fff;border:1px solid #ff9800;border-radius:20px;cursor:grab;font-size:12px;max-width:100%;word-break:break-word;box-shadow:0 1px 3px rgba(0,0,0,.08)}' +
+      '.chip-matched{background:#e8f5e9;border:2px solid #43a047;color:#1b5e20;cursor:default;font-weight:600}' +
+      '.chip-placeholder{display:inline-block;padding:8px 14px;border:1px dashed #bdbdbd;border-radius:20px;color:#9e9e9e;font-size:11px;font-style:normal}' +
+      '.chip:active{cursor:grabbing;opacity:.9}.chip-pool{min-height:80px;display:flex;flex-wrap:wrap;align-content:flex-start;gap:2px}' +
+      '.actions{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}button{padding:10px 16px;border:none;border-radius:8px;cursor:pointer;font-weight:600}' +
+      '.btn-primary{background:#1a73e8;color:#fff}.btn-secondary{background:#e0e0e0}#err{color:#b71c1c;font-size:12px;margin-top:8px;white-space:pre-wrap}' +
+      '.hint{background:#e3f2fd;border:1px solid #64b5f6;border-radius:8px;padding:10px;margin-bottom:10px;font-size:12px;line-height:1.5}' +
+      '.small{font-size:11px;color:#555;margin-top:6px}' +
+      '</style></head><body>' +
+      '<h3>Xác minh khớp tên — Kéo điểm chấm Azota</h3>' +
+      '<div class="hint"><b>Cách dùng:</b> Kéo <b>chip tên</b> bên phải thả vào ô <b>Tên trong lớp</b> của đúng dòng bài làm. ' +
+      'Double-click ô tên đã gán để trả chip về. <b>Ghi vào sheet</b> chỉ ghi <b>điểm chấm</b> (không ghi link ảnh).</div>' +
+      '<div class="layout"><div class="table-wrap"><table><thead><tr>' +
+      '<th>Ảnh</th><th>Tên trong lớp (chip — kéo thả)</th><th>Điểm</th><th>Tên đọc được</th><th>Độ khớp</th></tr></thead><tbody id="tb"></tbody></table></div>' +
+      '<div class="sidebar"><b>Chưa gán — kéo thả</b> <span id="uc">0</span> chip' +
+      '<div class="small">Kéo từng chip vào đúng dòng bài làm bên trái.</div>' +
+      '<div id="pool" class="chip-pool"></div></div></div>' +
+      '<div class="actions"><button type="button" class="btn-primary" id="bw">Ghi vào sheet BaoCao</button>' +
+      '<button type="button" class="btn-secondary" id="bx">Đóng</button></div><div id="m"></div><div id="err"></div>' +
+      '<textarea id="p" style="display:none">' + b64 + '</textarea>' +
+      '<script>' +
+      '(function(){' +
+      'function b64ToUtf8(b64){' +
+      'var bin=atob(b64);' +
+      'if(typeof TextDecoder!=="undefined"){var u8=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i)&255;return new TextDecoder("utf-8").decode(u8);}' +
+      'try{return decodeURIComponent(escape(bin));}catch(e){return bin;}' +
+      '}' +
+      'var el=document.getElementById("p");' +
+      'var raw=el?el.value.trim().replace(/\\s/g,""):"";' +
+      'var RD=[],UD=[],SC={},rowsEl=[];' +
+      'try{var D=JSON.parse(b64ToUtf8(raw));RD=D.r||[];UD=(D.u||[]).slice();SC=D.s||{};for(var zi=0;zi<UD.length;zi++)UD[zi].used=false;}' +
+      'catch(ex){document.getElementById("err").textContent="Lỗi đọc dữ liệu (UTF-8): "+ex.message;return;}' +
+      'function rowBySheetRow(sr){for(var i=0;i<RD.length;i++)if(RD[i].matchedSheetRow===sr)return i;return -1;}' +
+      'function freeSheetRow(sr){for(var u=0;u<UD.length;u++)if(UD[u].sheetRow===sr)UD[u].used=false;var ix=rowBySheetRow(sr);if(ix>=0){RD[ix].matchedName="";RD[ix].matchedSheetRow=null;RD[ix].score=0;refreshRow(ix);}}' +
+      'function fillDropChip(td,txt,has){td.innerHTML="";if(txt){var sp=document.createElement("span");sp.className="chip chip-matched";sp.textContent=txt;td.appendChild(sp);}else{var pl=document.createElement("span");pl.className="chip-placeholder";pl.textContent="Thả chip vào đây";td.appendChild(pl);}td.style.background=has?"#f1f8e9":"#fafafa";}' +
+      'function refreshRow(i){' +
+      'var tr=rowsEl[i];if(!tr)return;' +
+      'var r=RD[i];' +
+      'var tdDrop=tr.querySelector(".drop-cell");var tdScore=tr.querySelector(".td-score");' +
+      'fillDropChip(tdDrop,r.matchedName||"",!!r.matchedSheetRow);' +
+      'if(r.score>0){tdScore.textContent=String(Math.round(r.score));tdScore.className="td-score "+(r.score>=75?"score-ok":"score-warn");}' +
+      'else{tdScore.textContent="—";tdScore.className="td-score";}' +
+      '}' +
+      'function renderPool(){' +
+      'var pool=document.getElementById("pool");pool.innerHTML="";var nfree=0;' +
+      'for(var j=0;j<UD.length;j++)if(UD[j]&&!UD[j].used)nfree++;' +
+      'document.getElementById("uc").textContent=String(nfree);' +
+      'for(var j=0;j<UD.length;j++){' +
+      'var u=UD[j];if(!u||u.used)continue;' +
+      'var chip=document.createElement("div");chip.className="chip";chip.draggable=true;chip.textContent=u.name||"";' +
+      'chip.setAttribute("data-row",String(u.sheetRow));' +
+      'chip.setAttribute("data-name",u.name||"");' +
+      'chip.ondragstart=function(ev){var t=ev.target;ev.dataTransfer.setData("text/plain",t.getAttribute("data-row")+"|"+encodeURIComponent(t.getAttribute("data-name")||""));ev.dataTransfer.effectAllowed="copyMove";};' +
+      'pool.appendChild(chip);}' +
+      '}' +
+      'function build(){' +
+      'var tb=document.getElementById("tb");tb.innerHTML="";rowsEl=[];' +
+      'if(!RD.length){tb.innerHTML="<tr><td colspan=5>Không có dữ liệu</td></tr>";renderPool();return;}' +
+      'for(var i=0;i<RD.length;i++){(function(rowIdx){' +
+      'var r=RD[rowIdx];var tr=document.createElement("tr");tr.setAttribute("data-ix",String(rowIdx));rowsEl[rowIdx]=tr;' +
+      'tr.ondragover=function(e){e.preventDefault();e.dataTransfer.dropEffect="move";this.classList.add("drop-target");};' +
+      'tr.ondragleave=function(){this.classList.remove("drop-target");};' +
+      'tr.ondrop=function(e){e.preventDefault();this.classList.remove("drop-target");' +
+      'var ix=rowIdx;var parts=(e.dataTransfer.getData("text/plain")||"").split("|");' +
+      'var sr=parseInt(parts[0],10);var nm=parts.length>1?decodeURIComponent(parts[1]):"";' +
+      'if(!sr||isNaN(sr))return;' +
+      'var prev=RD[ix].matchedSheetRow;if(prev&&prev!==sr)freeSheetRow(prev);' +
+      'freeSheetRow(sr);' +
+      'for(var u=0;u<UD.length;u++)if(UD[u].sheetRow===sr)UD[u].used=true;' +
+      'RD[ix].matchedSheetRow=sr;RD[ix].matchedName=nm;RD[ix].score=100;refreshRow(ix);renderPool();' +
+      '};' +
+      'var td0=document.createElement("td");var u=r.nameImageUrl||"";' +
+      'if(u.indexOf("data:image/")===0){var im=document.createElement("img");im.src=u;im.style.cssText="max-height:72px;max-width:140px;object-fit:contain;border-radius:6px;border:1px solid #ccc;cursor:zoom-in";im.title="Phóng to";im.onclick=function(){window.open(this.src);};td0.appendChild(im);}' +
+      'else if(u){var a=document.createElement("a");a.href=u;a.target="_blank";a.textContent="Ảnh";td0.appendChild(a);}else{td0.textContent="—";}' +
+      'tr.appendChild(td0);' +
+      'var tdDrop=document.createElement("td");tdDrop.className="drop-cell";' +
+      'if(r.matchedName){var sp0=document.createElement("span");sp0.className="chip chip-matched";sp0.textContent=r.matchedName;tdDrop.appendChild(sp0);}' +
+      'else{var pl0=document.createElement("span");pl0.className="chip-placeholder";pl0.textContent="Thả chip vào đây";tdDrop.appendChild(pl0);}' +
+      'tdDrop.style.background=r.matchedSheetRow?"#f1f8e9":"#fafafa";' +
+      'tdDrop.title="Kéo chip thả vào dòng; double-click ô để trả chip";' +
+      'tdDrop.ondblclick=function(){var p=RD[rowIdx].matchedSheetRow;if(p)freeSheetRow(p);RD[rowIdx].matchedName="";RD[rowIdx].matchedSheetRow=null;RD[rowIdx].score=0;refreshRow(rowIdx);renderPool();};' +
+      'tr.appendChild(tdDrop);' +
+      'var tdM=document.createElement("td");tdM.textContent=r.mark!=null?String(r.mark):"";tr.appendChild(tdM);' +
+      'var tdR=document.createElement("td");tdR.textContent=r.recognizedName||"";tr.appendChild(tdR);' +
+      'var tdS=document.createElement("td");tdS.className="td-score";if(r.score>0){tdS.textContent=String(Math.round(r.score));tdS.className+=" "+(r.score>=75?"score-ok":"score-warn");}else{tdS.textContent="—";}' +
+      'tr.appendChild(tdS);tb.appendChild(tr);' +
+      '})(i);}' +
+      'renderPool();' +
+      'document.getElementById("bw").onclick=function(){document.getElementById("bw").disabled=true;document.getElementById("m").textContent="Đang ghi...";' +
+      'google.script.run.withSuccessHandler(function(){document.getElementById("m").textContent="Đã ghi xong."})' +
+      '.withFailureHandler(function(err){document.getElementById("m").textContent="Lỗi: "+(err&&err.message||err);document.getElementById("bw").disabled=false})' +
+      '.writeAzotaResultFromDialog(RD,SC);};' +
+      'document.getElementById("bx").onclick=function(){google.script.host.close();};' +
+      '}' +
+      'build();' +
+      '})();' +
+      '</script></body></html>';
+    SpreadsheetApp.getUi().showModalDialog(HtmlService.createHtmlOutput(html).setWidth(980).setHeight(720), 'Xác minh — Điểm chấm Azota');
+    _logExam('DIALOG', 'showModalDialog done');
+  } catch (e) {
+    _logExam('DIALOG', 'showAzotaResultDialog error: ' + e.toString());
+    SpreadsheetApp.getUi().alert('Không thể mở dialog: ' + e.toString());
+  }
+}
+
+/**
+ * Ghi kết quả từ dialog vào sheet BaoCao. Chỉ ghi cột điểm chấm (không ghi URL ảnh).
+ * results: [{ mark, matchedSheetRow, ... }]
+ * sheetContext: { diemCol } (1-based)
+ */
+function writeAzotaResultFromDialog(results, sheetContext) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('BaoCao');
+  if (!sheet) {
+    throw new Error('Không tìm thấy sheet "BaoCao".');
+  }
+  var diemCol = sheetContext.diemCol || 0;
+  if (diemCol < 1) {
+    throw new Error('Thiếu thông tin cột điểm (diemCol).');
+  }
+  var count = 0;
+  for (var i = 0; i < results.length; i++) {
+    var r = results[i];
+    var row = r.matchedSheetRow;
+    if (row != null && row >= 1) {
+      sheet.getRange(row, diemCol).setValue(markValueForSheet(r.mark));
+      count++;
+    }
+  }
+  SpreadsheetApp.getUi().alert('Đã ghi điểm cho ' + count + ' học sinh (chỉ cột điểm chấm).');
+}
+
 function getBaoCaoColumnMapping(sheet) {
   var headerRow = 1;
   var lastCol = sheet.getLastColumn();

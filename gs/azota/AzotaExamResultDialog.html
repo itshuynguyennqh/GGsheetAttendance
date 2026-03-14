@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; padding: 12px; margin: 0; font-size: 13px; color: #333; }
+    h3 { margin: 0 0 12px 0; color: #1a73e8; font-size: 1.1rem; }
+    .layout { display: flex; gap: 16px; align-items: flex-start; }
+    .table-wrap { flex: 1; min-width: 0; overflow: auto; border: 1px solid #ddd; border-radius: 6px; background: #fff; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #eee; }
+    th { background: #1a73e8; color: #fff; font-weight: 600; white-space: nowrap; }
+    tr:hover { background: #f5f5f5; }
+    .sidebar { width: 200px; flex-shrink: 0; border: 2px dashed #ff9800; border-radius: 8px; padding: 12px; background: #fffbf0; }
+    .sidebar-title { font-weight: bold; color: #e65100; margin-bottom: 8px; font-size: 0.9rem; }
+    .unmatched-list { max-height: 400px; overflow-y: auto; }
+    .unmatched-item { padding: 6px 8px; margin-bottom: 4px; background: #fff; border-radius: 4px; border: 1px solid #ffe0b2; font-size: 0.9rem; }
+    .score-ok { color: #2e7d32; font-weight: 600; }
+    .score-warn { color: #ed6c02; }
+    .score-none { color: #999; }
+    .img-link { font-size: 0.85rem; color: #1a73e8; }
+    .thumb img { max-height: 84px; max-width: 180px; object-fit: contain; display: block; border-radius: 8px; border: 1px solid #ccc; background: #f8f9fa; cursor: zoom-in; }
+    .actions { margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap; }
+    button { padding: 10px 18px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; }
+    .btn-primary { background: #1a73e8; color: #fff; }
+    .btn-primary:hover { background: #1557b0; }
+    .btn-secondary { background: #e0e0e0; color: #333; }
+    .btn-secondary:hover { background: #bdbdbd; }
+    #msg { margin-top: 8px; color: #666; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h3>Kết quả điểm chấm Azota</h3>
+  <div class="layout">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Ảnh tên</th>
+            <th>Tên trong lớp</th>
+            <th>Điểm chấm</th>
+            <th>Tên đọc được</th>
+            <th>Độ khớp</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="sidebar">
+      <div class="sidebar-title">Chưa khớp (<span id="unmatchedCount">0</span>)</div>
+      <div class="unmatched-list" id="unmatchedList"></div>
+    </div>
+  </div>
+  <div class="actions">
+    <button class="btn-primary" id="btnWrite" onclick="writeToSheet()">Ghi vào sheet BaoCao</button>
+    <button class="btn-secondary" onclick="google.script.host.close()">Đóng</button>
+  </div>
+  <div id="msg"></div>
+
+  <script>
+    var resultsData = <?!= resultsJson ?>;
+    var unmatchedData = <?!= unmatchedJson ?>;
+    var sheetContext = <?!= sheetContextJson ?>;
+
+    function qAttr(s) {
+      return String(s || '').replace(/'/g, '%27');
+    }
+    function cellImg(r) {
+      var u = r.nameImageUrl;
+      if (!u) return '—';
+      if (u.indexOf('data:image/') === 0) {
+        return '<div class="thumb"><img src="' + qAttr(u) + '" alt="Chữ viết tay" title="Click mở phóng to" onclick="window.open(this.src)" /></div>';
+      }
+      return '<div class="thumb"><img src="' + qAttr(u) + '" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline\'" /><a class="img-link" href="' + qAttr(u) + '" target="_blank" style="display:none">Xem ảnh (cần đăng nhập Azota)</a></div>';
+    }
+    function render() {
+      var tbody = document.getElementById('tbody');
+      tbody.innerHTML = '';
+      for (var i = 0; i < resultsData.length; i++) {
+        var r = resultsData[i];
+        var scoreClass = 'score-none';
+        if (r.score != null && r.score > 0) scoreClass = r.score >= 75 ? 'score-ok' : 'score-warn';
+        var imgCell = cellImg(r);
+        var matchedName = (r.matchedName || '').trim() || '—';
+        var scoreText = (r.score != null && r.score > 0) ? r.score : '—';
+        tbody.innerHTML += '<tr><td>' + imgCell + '</td><td>' + escapeHtml(matchedName) + '</td><td>' + escapeHtml(r.mark || '') + '</td><td>' + escapeHtml(r.recognizedName || '') + '</td><td class="' + scoreClass + '">' + scoreText + '</td></tr>';
+      }
+      var ul = document.getElementById('unmatchedList');
+      ul.innerHTML = '';
+      document.getElementById('unmatchedCount').textContent = unmatchedData.length;
+      for (var j = 0; j < unmatchedData.length; j++) {
+        var u = unmatchedData[j];
+        ul.innerHTML += '<div class="unmatched-item">' + escapeHtml(u.name || '') + '</div>';
+      }
+    }
+
+    function escapeHtml(s) {
+      if (s == null) return '';
+      var div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    function writeToSheet() {
+      document.getElementById('btnWrite').disabled = true;
+      document.getElementById('msg').textContent = 'Đang ghi vào sheet...';
+      google.script.run
+        .withSuccessHandler(function() {
+          document.getElementById('msg').textContent = 'Đã ghi xong. Bạn có thể đóng dialog.';
+        })
+        .withFailureHandler(function(err) {
+          document.getElementById('msg').textContent = 'Lỗi: ' + (err && err.message ? err.message : err);
+          document.getElementById('btnWrite').disabled = false;
+        })
+        .writeAzotaResultFromDialog(resultsData, sheetContext);
+    }
+
+    window.onload = render;
+  </script>
+</body>
+</html>

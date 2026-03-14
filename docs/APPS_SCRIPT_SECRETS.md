@@ -6,7 +6,8 @@ Các key và ID nhạy cảm **không được lưu trong code**, mà lưu trong
 
 | Property | Mô tả | Lấy ở đâu |
 |----------|--------|-----------|
-| `GEMINI_API_KEY` | API key gọi Gemini (AI trợ lý) | https://aistudio.google.com/app/apikey |
+| `GEMINI_API_KEY` | API key gọi Gemini (AI trợ lý, OCR Azota) | https://aistudio.google.com/app/apikey |
+| `GEMINI_MODEL` | (Tùy chọn) Tên model API, ví dụ `gemini-2.0-flash`, `gemini-3.1-flash-lite-preview`, `gemma-3-27b-it` | Menu Sheet → **Đổi model Gemini** hoặc thêm property thủ công |
 | `EXTERNAL_BTVN_SHEET_ID` | ID file Google Sheet chứa báo cáo BTVN Azota (sheet ngoài) | ID trong URL: `https://docs.google.com/spreadsheets/d/<ID>/edit` |
 
 ## Cách cấu hình Script Properties

@@ -9,8 +9,38 @@ const { db } = require('../db');
 const logger = require('../utils/azotaLogger');
 
 const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || 'http://localhost:8000';
+const VLM_SERVICE_URL = process.env.VLM_SERVICE_URL || 'http://localhost:8001';
+const OCR_ENGINE_MODE = (process.env.OCR_ENGINE_MODE || 'ocr').trim().toLowerCase(); // 'ocr' | 'vlm'
+/** Số ảnh OCR/VLM gọi API cùng lúc (tránh quá tải Gemini/API). */
+const AZOTA_OCR_CONCURRENCY = Math.max(1, Math.min(24, Number(process.env.AZOTA_OCR_CONCURRENCY) || 6));
+
+async function runPool(asyncFns, concurrency) {
+  const results = new Array(asyncFns.length);
+  let cursor = 0;
+  async function worker() {
+    for (;;) {
+      const idx = cursor++;
+      if (idx >= asyncFns.length) break;
+      results[idx] = await asyncFns[idx]();
+    }
+  }
+  const n = Math.min(concurrency, asyncFns.length) || 1;
+  await Promise.all(Array.from({ length: n }, () => worker()));
+  return results;
+}
+
+if (process.env.NODE_ENV !== 'test') {
+  console.log('[azota-exam-result] OCR_ENGINE_MODE=%s → %s', OCR_ENGINE_MODE, OCR_ENGINE_MODE === 'vlm' ? 'VLM (port 8001, ảnh gửi tới Gemini/VLM)' : 'OCR (port 8000)');
+  console.log('[azota-exam-result] AZOTA_OCR_CONCURRENCY=%s (song song)', AZOTA_OCR_CONCURRENCY);
+}
 const AZOTA_EXAM_RESULT_BASE = 'https://azota.vn/private-api/exams';
 const AZOTA_TEACHER_API_BASE = 'https://azt-teacher-api.azota.vn';
+
+function getServiceBaseUrl() {
+  return OCR_ENGINE_MODE === 'vlm'
+    ? VLM_SERVICE_URL.replace(/\/$/, '')
+    : OCR_SERVICE_URL.replace(/\/$/, '');
+}
 
 function normalizeBearerToken(s) {
   if (s == null || typeof s !== 'string') return '';
@@ -210,6 +240,10 @@ async function fetchExamResult(examId, token, cookie) {
 }
 
 async function fetchImageAsBase64(imageUrl, token, cookie) {
+  if (imageUrl && typeof imageUrl === 'string' && imageUrl.startsWith('data:image/') && imageUrl.includes(';base64,')) {
+    const b64 = imageUrl.split(';base64,')[1];
+    return b64 && b64.length ? b64 : null;
+  }
   const headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     'Referer': 'https://azota.vn/',
@@ -225,13 +259,14 @@ async function fetchImageAsBase64(imageUrl, token, cookie) {
 }
 
 async function callOcrService(imageBase64, language = 'vi') {
-  const base = OCR_SERVICE_URL.replace(/\/$/, '');
+  const base = getServiceBaseUrl();
+  const timeout = OCR_ENGINE_MODE === 'vlm' ? 60000 : 30000;
   try {
     const res = await fetch(`${base}/ocr`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image_base64: imageBase64, language }),
-      signal: AbortSignal.timeout(30000), // 30s timeout
+      signal: AbortSignal.timeout(timeout),
     });
     if (!res.ok) {
       const err = await res.text();
@@ -241,14 +276,45 @@ async function callOcrService(imageBase64, language = 'vi') {
     return (data && data.text) ? String(data.text).trim() : '';
   } catch (err) {
     if (err.name === 'AbortError' || err.message.includes('fetch failed') || err.message.includes('ECONNREFUSED') || err.code === 'ECONNREFUSED') {
-      throw new Error(`OCR service không chạy hoặc không thể kết nối đến ${base}. Vui lòng khởi động Python OCR service: cd python/ocr-service && uvicorn main:app --reload --port 8000`);
+      const hint = OCR_ENGINE_MODE === 'vlm'
+        ? `VLM service không chạy tại ${base}. Khởi động: cd python/vlm-service && .\\run.ps1`
+        : `OCR service không chạy tại ${base}. Khởi động: cd python/ocr-service && uvicorn main:app --reload --port 8000`;
+      throw new Error(hint);
+    }
+    throw err;
+  }
+}
+
+async function callOcrMatch(imageBase64, studentNames, language = 'vi', threshold = 75, fallbackMinScore = 60) {
+  const base = VLM_SERVICE_URL.replace(/\/$/, '');
+  try {
+    const res = await fetch(`${base}/ocr-match`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image_base64: imageBase64,
+        student_names: studentNames,
+        language,
+        threshold,
+        fallback_min_score: fallbackMinScore,
+      }),
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error('VLM ocr-match error: ' + (err || res.statusText));
+    }
+    return await res.json();
+  } catch (err) {
+    if (err.name === 'AbortError' || err.message.includes('fetch failed') || err.message.includes('ECONNREFUSED') || err.code === 'ECONNREFUSED') {
+      throw new Error(`VLM service không chạy tại ${base}. Khởi động: cd python/vlm-service && .\\run.ps1`);
     }
     throw err;
   }
 }
 
 async function callMatchNames(recognizedNames, studentNames, threshold = 60, fallbackMinScore = 45) {
-  const base = OCR_SERVICE_URL.replace(/\/$/, '');
+  const base = getServiceBaseUrl();
   try {
     const res = await fetch(`${base}/match-names`, {
       method: 'POST',
@@ -259,7 +325,7 @@ async function callMatchNames(recognizedNames, studentNames, threshold = 60, fal
         threshold,
         fallback_min_score: fallbackMinScore,
       }),
-      signal: AbortSignal.timeout(30000), // 30s timeout
+      signal: AbortSignal.timeout(30000),
     });
     if (!res.ok) {
       const err = await res.text();
@@ -269,7 +335,10 @@ async function callMatchNames(recognizedNames, studentNames, threshold = 60, fal
     return (data && data.matches) ? data.matches : [];
   } catch (err) {
     if (err.name === 'AbortError' || err.message.includes('fetch failed') || err.message.includes('ECONNREFUSED') || err.code === 'ECONNREFUSED') {
-      throw new Error(`Match-names service không chạy hoặc không thể kết nối đến ${base}. Vui lòng khởi động Python OCR service: cd python/ocr-service && uvicorn main:app --reload --port 8000`);
+      const hint = OCR_ENGINE_MODE === 'vlm'
+        ? `VLM service không chạy tại ${base}. Khởi động: cd python/vlm-service && .\\run.ps1`
+        : `Match-names service không chạy tại ${base}. Khởi động: cd python/ocr-service && uvicorn main:app --reload --port 8000`;
+      throw new Error(hint);
     }
     throw err;
   }
@@ -370,46 +439,79 @@ router.post('/process', async (req, res) => {
     }
 
     const ocrLoopStart = Date.now();
-    logger.processStepStart('OCR_LOOP', { itemsCount: items.length });
+    const useVlmOcrMatch = OCR_ENGINE_MODE === 'vlm';
+    logger.processStepStart('OCR_LOOP', {
+      itemsCount: items.length,
+      engine: OCR_ENGINE_MODE,
+      concurrency: AZOTA_OCR_CONCURRENCY,
+    });
     const recognizedNames = [];
     const marks = [];
     const nameImageUrls = [];
     const nameImageDataUrls = [];
-    const nameImageBase64s = []; // Để OCR lại khi không khớp tên
+    const nameImageBase64s = [];
+    const vlmDirectMatches = [];
+    const ocrIndices = [];
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      const mark = getMarkFromItem(item);
+      marks.push(getMarkFromItem(item));
       const attendeeName = (item.attendeeName && String(item.attendeeName).trim()) || '';
       const imageUrl = getNameImageUrlFromItem(item);
       nameImageUrls.push(imageUrl || '');
       nameImageDataUrls.push(null);
       nameImageBase64s.push(null);
-      let name = attendeeName;
-      if (!name && imageUrl) {
-        logger.ocrItem(i, 'START', { imageUrl: imageUrl.substring(0, 80) + (imageUrl.length > 80 ? '...' : '') });
-        let base64;
-        try {
-          base64 = await fetchImageAsBase64(imageUrl, token, cookie || '');
-        } catch (fetchErr) {
-          logger.errorImageFetch(i, fetchErr, imageUrl);
-          logger.ocrItem(i, 'FAIL', { reason: 'image_fetch', error: fetchErr.message });
-        }
-        if (base64) {
-          nameImageBase64s[i] = base64;
-          nameImageDataUrls[i] = 'data:image/jpeg;base64,' + base64;
-          try {
-            name = await callOcrService(base64, 'vi');
-            logger.ocrItem(i, 'OK', { recognizedText: name ? name.substring(0, 100) : '' });
-          } catch (e) {
-            logger.errorOcr(i, e, imageUrl);
-            logger.ocrItem(i, 'FAIL', { reason: 'ocr', error: e.message });
-          }
-        }
-      } else if (name) {
-        logger.ocrItem(i, 'OK', { source: 'api', recognizedText: name.substring(0, 100) });
+      vlmDirectMatches.push(null);
+      if (attendeeName) {
+        recognizedNames.push(attendeeName);
+        logger.ocrItem(i, 'OK', { source: 'api', recognizedText: attendeeName.substring(0, 100) });
+      } else if (imageUrl) {
+        recognizedNames.push('');
+        ocrIndices.push(i);
+      } else {
+        recognizedNames.push('');
       }
-      recognizedNames.push(name || '');
-      marks.push(mark);
+    }
+    const ocrTasks = ocrIndices.map((i) => async () => {
+      const imageUrl = nameImageUrls[i];
+      logger.ocrItem(i, 'START', { imageUrl: imageUrl.substring(0, 80) + (imageUrl.length > 80 ? '...' : '') });
+      let base64 = null;
+      try {
+        base64 = await fetchImageAsBase64(imageUrl, token, cookie || '');
+      } catch (fetchErr) {
+        logger.errorImageFetch(i, fetchErr, imageUrl);
+        logger.ocrItem(i, 'FAIL', { reason: 'image_fetch', error: fetchErr.message });
+      }
+      if (!base64) return { i, name: '', vlm: null };
+      nameImageBase64s[i] = base64;
+      nameImageDataUrls[i] = 'data:image/jpeg;base64,' + base64;
+      let name = '';
+      let vlm = null;
+      try {
+        if (useVlmOcrMatch) {
+          vlm = await callOcrMatch(base64, studentNames, 'vi', 75, 60);
+          name = vlm.text || '';
+          logger.ocrItem(i, 'OK', {
+            source: 'vlm-ocr-match',
+            recognizedText: name ? name.substring(0, 100) : '',
+            matched: vlm.matched || '',
+            score: vlm.score,
+          });
+        } else {
+          name = await callOcrService(base64, 'vi');
+          logger.ocrItem(i, 'OK', { recognizedText: name ? name.substring(0, 100) : '' });
+        }
+      } catch (e) {
+        logger.errorOcr(i, e, imageUrl);
+        logger.ocrItem(i, 'FAIL', { reason: 'ocr', error: e.message });
+      }
+      return { i, name, vlm };
+    });
+    if (ocrTasks.length) {
+      const ocrOut = await runPool(ocrTasks, AZOTA_OCR_CONCURRENCY);
+      for (const o of ocrOut) {
+        recognizedNames[o.i] = o.name || '';
+        if (o.vlm) vlmDirectMatches[o.i] = o.vlm;
+      }
     }
     logger.processStepEnd('OCR_LOOP', {
       recognizedCount: recognizedNames.length,
@@ -417,31 +519,65 @@ router.post('/process', async (req, res) => {
     }, Date.now() - ocrLoopStart);
 
     const MATCH_THRESHOLD = 75;
-    const FALLBACK_MIN_SCORE = 60; // Tên gần nhất khi không đạt ngưỡng (để người dùng xác nhận)
+    const FALLBACK_MIN_SCORE = 60;
     let matches;
     let matchFallbackUsed = false;
     logger.matchCall(recognizedNames.length, studentNames.length, MATCH_THRESHOLD);
     try {
-      matches = await callMatchNames(recognizedNames, studentNames, MATCH_THRESHOLD, FALLBACK_MIN_SCORE);
-      let matchCount = matches.filter((m) => m.index >= 0).length;
-      const noMatchIndices = matches
-        .map((m, idx) => (m.index < 0 && nameImageBase64s[idx] ? idx : -1))
-        .filter((idx) => idx >= 0);
-      if (noMatchIndices.length > 0) {
-        logger.processStep('OCR_RETRY', `OCR lại ${noMatchIndices.length} ảnh không khớp tên`);
-        for (const i of noMatchIndices) {
-          try {
-            const retryName = await callOcrService(nameImageBase64s[i], 'vi');
-            if (retryName && String(retryName).trim() !== String(recognizedNames[i] || '').trim()) {
-              recognizedNames[i] = String(retryName).trim();
-              logger.ocrItem(i, 'OK', { source: 'retry', recognizedText: recognizedNames[i].substring(0, 80) });
+      if (useVlmOcrMatch) {
+        // Build matches from VLM direct results, fall back to fuzzy for items without VLM match
+        matches = recognizedNames.map((rec, idx) => {
+          const vlm = vlmDirectMatches[idx];
+          if (vlm && vlm.index >= 0 && vlm.score >= FALLBACK_MIN_SCORE) {
+            return {
+              recognized: rec,
+              matched: vlm.matched || '',
+              index: vlm.index,
+              score: vlm.score || 0,
+              fallback: vlm.fallback === true || (vlm.score < MATCH_THRESHOLD),
+            };
+          }
+          return { recognized: rec, matched: '', index: -1, score: 0, fallback: false };
+        });
+        // For items that VLM couldn't match, run fuzzy matching as fallback
+        const unmatchedRecs = matches
+          .map((m, idx) => (m.index < 0 && recognizedNames[idx] ? idx : -1))
+          .filter((idx) => idx >= 0);
+        if (unmatchedRecs.length > 0) {
+          const unmatchedNames = unmatchedRecs.map((idx) => recognizedNames[idx]);
+          const fuzzyMatches = await callMatchNames(unmatchedNames, studentNames, MATCH_THRESHOLD, FALLBACK_MIN_SCORE);
+          for (let j = 0; j < unmatchedRecs.length; j++) {
+            const idx = unmatchedRecs[j];
+            if (fuzzyMatches[j] && fuzzyMatches[j].index >= 0) {
+              matches[idx] = fuzzyMatches[j];
             }
-          } catch (e) {
-            logger.ocrItem(i, 'FAIL', { reason: 'ocr_retry', error: e.message });
           }
         }
+      } else {
         matches = await callMatchNames(recognizedNames, studentNames, MATCH_THRESHOLD, FALLBACK_MIN_SCORE);
-        matchCount = matches.filter((m) => m.index >= 0).length;
+      }
+      let matchCount = matches.filter((m) => m.index >= 0).length;
+      if (!useVlmOcrMatch) {
+        const noMatchIndices = matches
+          .map((m, idx) => (m.index < 0 && nameImageBase64s[idx] ? idx : -1))
+          .filter((idx) => idx >= 0);
+        if (noMatchIndices.length > 0) {
+          logger.processStep('OCR_RETRY', `OCR lại ${noMatchIndices.length} ảnh không khớp tên (song song)`);
+          const retryTasks = noMatchIndices.map((i) => async () => {
+            try {
+              const retryName = await callOcrService(nameImageBase64s[i], 'vi');
+              if (retryName && String(retryName).trim() !== String(recognizedNames[i] || '').trim()) {
+                recognizedNames[i] = String(retryName).trim();
+                logger.ocrItem(i, 'OK', { source: 'retry', recognizedText: recognizedNames[i].substring(0, 80) });
+              }
+            } catch (e) {
+              logger.ocrItem(i, 'FAIL', { reason: 'ocr_retry', error: e.message });
+            }
+          });
+          await runPool(retryTasks, AZOTA_OCR_CONCURRENCY);
+          matches = await callMatchNames(recognizedNames, studentNames, MATCH_THRESHOLD, FALLBACK_MIN_SCORE);
+          matchCount = matches.filter((m) => m.index >= 0).length;
+        }
       }
       logger.matchCallResult(matchCount, matches.length, false);
       if (matchCount === 0 && recognizedNames.length > 0) {

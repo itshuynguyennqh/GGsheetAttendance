@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Alert,
   Box,
@@ -16,13 +16,92 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableSortLabel,
   TextField,
   Typography,
 } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
 import { azotaExamResultApi, classesApi } from '../api';
 import * as XLSX from 'xlsx';
+
+function scoreColor(score) {
+  if (score == null || score <= 0) return 'error.main';
+  if (score >= 90) return 'success.main';
+  if (score >= 75) return 'success.light';
+  if (score >= 60) return 'warning.main';
+  return 'error.main';
+}
+
+function scoreBg(score) {
+  if (score == null || score <= 0) return 'error.lighter';
+  if (score >= 90) return undefined;
+  if (score >= 75) return undefined;
+  if (score >= 60) return 'warning.lighter';
+  return 'error.lighter';
+}
+
+function DraggableName({ id, data, children }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id, data });
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    opacity: isDragging ? 0.4 : 1,
+    cursor: 'grab',
+    touchAction: 'none',
+  };
+  return (
+    <span ref={setNodeRef} style={style} {...listeners} {...attributes}>
+      {children}
+    </span>
+  );
+}
+
+function DroppableCell({ id, data, children, isEmpty }) {
+  const { isOver, setNodeRef } = useDroppable({ id, data });
+  return (
+    <TableCell
+      ref={setNodeRef}
+      sx={{
+        verticalAlign: 'middle',
+        minWidth: 140,
+        transition: 'background-color 0.15s, border-color 0.15s',
+        bgcolor: isOver ? 'primary.lighter' : undefined,
+        border: isEmpty ? '2px dashed' : '1px dashed transparent',
+        borderColor: isOver ? 'primary.main' : isEmpty ? 'grey.300' : 'transparent',
+        borderRadius: 1,
+      }}
+    >
+      {children}
+    </TableCell>
+  );
+}
+
+function DroppableSidebar({ children }) {
+  const { isOver, setNodeRef } = useDroppable({ id: 'sidebar-unmatched', data: { type: 'sidebar' } });
+  return (
+    <Paper
+      ref={setNodeRef}
+      elevation={0}
+      sx={{
+        p: 1.5,
+        minWidth: 180,
+        maxWidth: 240,
+        maxHeight: 600,
+        overflowY: 'auto',
+        border: '2px dashed',
+        borderColor: isOver ? 'warning.main' : 'grey.300',
+        bgcolor: isOver ? 'warning.lighter' : 'grey.50',
+        borderRadius: 2,
+        transition: 'border-color 0.15s, background-color 0.15s',
+        flexShrink: 0,
+      }}
+    >
+      {children}
+    </Paper>
+  );
+}
 
 const SOURCE_TYPES = { class: 'class', paste: 'paste' };
 
@@ -42,35 +121,45 @@ export default function AzotaExamResult() {
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
   const [ocrServiceStatus, setOcrServiceStatus] = useState('checking');
+  const [vlmServiceStatus, setVlmServiceStatus] = useState('checking');
+  const [activeEngine, setActiveEngine] = useState(null);
   const [selectedSlotIndex, setSelectedSlotIndex] = useState('');
   const [savingRowIndex, setSavingRowIndex] = useState(null);
   const [saveSampleError, setSaveSampleError] = useState('');
   const [localResults, setLocalResults] = useState(null);
+  const [sortCol, setSortCol] = useState(null);
+  const [sortDir, setSortDir] = useState('asc');
 
   useEffect(() => {
     classesApi.list().then(setClasses).catch(console.error);
     
-    // Kiểm tra OCR service khi component mount
-    const checkOcrService = async () => {
+    const checkService = async (url, setStatus) => {
       try {
-        const ocrServiceUrl = process.env.REACT_APP_OCR_SERVICE_URL || 'http://localhost:8000';
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 3000);
-        const res = await fetch(`${ocrServiceUrl}/health`, { 
-          method: 'GET',
-          signal: controller.signal,
-        });
+        const res = await fetch(`${url}/health`, { method: 'GET', signal: controller.signal });
         clearTimeout(timeoutId);
         if (res.ok) {
-          setOcrServiceStatus('ok');
-        } else {
-          setOcrServiceStatus('error');
+          const data = await res.json().catch(() => ({}));
+          setStatus('ok');
+          return data.engine || null;
         }
-      } catch (e) {
-        setOcrServiceStatus('error');
+        setStatus('error');
+      } catch {
+        setStatus('error');
       }
+      return null;
     };
-    checkOcrService();
+    const checkServices = async () => {
+      const [ocrEngine, vlmEngine] = await Promise.all([
+        checkService('http://localhost:8000', setOcrServiceStatus),
+        checkService('http://localhost:8001', setVlmServiceStatus),
+      ]);
+      // VLM service trả engine: "gemini" | "gemma" | "openvino", vẫn tính là VLM
+      const useVlm = vlmEngine === 'vlm' || vlmEngine === 'gemini' || vlmEngine === 'gemma' || vlmEngine === 'openvino';
+      setActiveEngine(useVlm ? 'vlm' : ocrEngine ? 'ocr' : null);
+    };
+    checkServices();
   }, []);
 
   const getStudentNames = () => {
@@ -134,14 +223,13 @@ export default function AzotaExamResult() {
       setLocalResults(data?.results ? data.results.map((r) => ({ ...r })) : null);
     } catch (e) {
       const errorMsg = e?.message || 'Lỗi xử lý.';
-      if (errorMsg.includes('OCR service không chạy') || errorMsg.includes('Match-names service không chạy')) {
+      if (errorMsg.includes('không chạy') || errorMsg.includes('không thể kết nối')) {
         setError(
           errorMsg + '\n\n' +
-          'Hướng dẫn khởi động OCR service:\n' +
-          '1. Mở terminal mới\n' +
-          '2. cd python/ocr-service\n' +
-          '3. uvicorn main:app --reload --port 8000\n' +
-          '4. Đợi service khởi động xong, sau đó thử lại'
+          'Hướng dẫn khởi động:\n' +
+          '• OCR: cd python/ocr-service && uvicorn main:app --reload --port 8000\n' +
+          '• VLM: cd python/vlm-service && .\\run.ps1\n' +
+          'Đợi service khởi động xong, sau đó thử lại.'
         );
       } else {
         setError(errorMsg);
@@ -173,70 +261,69 @@ export default function AzotaExamResult() {
 
   const rows = (localResults ?? result?.results) || [];
   const classStudents = result?.classStudents || [];
-  const unmatchedStudents = classStudents.filter((s) => !rows.some((r) => r.studentId === s.id));
+  const allStudentNames = result?.studentNames || [];
 
-  const assignStudentToRow = (rowIndex, student) => {
-    if (!student || rowIndex < 0 || rowIndex >= rows.length) return;
-    setLocalResults((prev) => {
-      if (!prev?.length) return prev;
-      return prev.map((r, i) => (i === rowIndex ? { ...r, studentId: student.id, studentName: student.hoTen || student.name } : r));
-    });
+  const unmatchedStudents = useMemo(() => {
+    const assignedNames = new Set(rows.filter((r) => r.studentName).map((r) => r.studentName));
+    if (classStudents.length > 0) {
+      return classStudents.filter((s) => !rows.some((r) => r.studentId === s.id));
+    }
+    if (allStudentNames.length > 0) {
+      return allStudentNames
+        .map((name, idx) => ({ id: `name-${idx}`, hoTen: name }))
+        .filter((s) => !assignedNames.has(s.hoTen));
+    }
+    return [];
+  }, [rows, classStudents, allStudentNames]);
+
+  const [activeDrag, setActiveDrag] = useState(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  const handleDndDragStart = (event) => {
+    setActiveDrag(event.active.data.current || null);
   };
 
-  const clearRowStudent = (rowIndex) => {
-    if (rowIndex < 0 || rowIndex >= rows.length) return;
-    setLocalResults((prev) => {
-      if (!prev?.length) return prev;
-      return prev.map((r, i) => (i === rowIndex ? { ...r, studentId: null, studentName: '' } : r));
-    });
-  };
+  const handleDndDragEnd = (event) => {
+    const { active, over } = event;
+    setActiveDrag(null);
+    if (!over || !active.data.current) return;
+    const src = active.data.current;
+    const dst = over.data.current;
 
-  const handleDragStart = (e, payload) => {
-    e.dataTransfer.setData('application/json', JSON.stringify(payload));
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDropOnRow = (e, targetRowIndex) => {
-    e.preventDefault();
-    e.currentTarget.classList.remove('drag-over');
-    try {
-      const raw = e.dataTransfer.getData('application/json');
-      if (!raw) return;
-      const payload = JSON.parse(raw);
-      if (payload.type === 'unmatched' && payload.id != null) {
-        assignStudentToRow(targetRowIndex, { id: payload.id, hoTen: payload.hoTen });
-      } else if (payload.type === 'row' && payload.rowIndex !== targetRowIndex) {
-        const student = { id: payload.studentId, hoTen: payload.studentName };
+    if (dst?.type === 'sidebar') {
+      if (src.type === 'row' && src.rowIndex != null) {
         setLocalResults((prev) => {
           if (!prev?.length) return prev;
-          const next = prev.map((r, i) => {
-            if (i === targetRowIndex) return { ...r, studentId: student.id, studentName: student.hoTen };
-            if (i === payload.rowIndex) return { ...r, studentId: null, studentName: '' };
-            return r;
-          });
-          return next;
+          return prev.map((r, i) => (i === src.rowIndex ? { ...r, studentId: null, studentName: '' } : r));
         });
       }
-    } catch (_) {}
-  };
+      return;
+    }
 
-  const handleDropOnUnmatched = (e) => {
-    e.preventDefault();
-    e.currentTarget.classList.remove('drag-over');
-    try {
-      const raw = e.dataTransfer.getData('application/json');
-      if (!raw) return;
-      const payload = JSON.parse(raw);
-      if (payload.type === 'row' && payload.rowIndex != null) clearRowStudent(payload.rowIndex);
-    } catch (_) {}
+    if (dst?.type === 'cell' && dst.rowIndex != null) {
+      const targetIdx = dst.rowIndex;
+      if (src.type === 'unmatched') {
+        setLocalResults((prev) => {
+          if (!prev?.length) return prev;
+          return prev.map((r, i) => {
+            if (i !== targetIdx) return r;
+            return { ...r, studentId: src.id, studentName: src.hoTen };
+          });
+        });
+      } else if (src.type === 'row' && src.rowIndex !== targetIdx) {
+        setLocalResults((prev) => {
+          if (!prev?.length) return prev;
+          const srcRow = prev[src.rowIndex];
+          const dstRow = prev[targetIdx];
+          return prev.map((r, i) => {
+            if (i === targetIdx) return { ...r, studentId: srcRow.studentId || srcRow.studentName, studentName: srcRow.studentName };
+            if (i === src.rowIndex) return { ...r, studentId: dstRow.studentId || dstRow.studentName, studentName: dstRow.studentName };
+            return r;
+          });
+        });
+      }
+    }
   };
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    e.currentTarget.classList.add('drag-over');
-  };
-  const handleDragLeave = (e) => e.currentTarget.classList.remove('drag-over');
 
   const handleExportExcel = () => {
     const dataRows = rows.length ? rows : (result?.results || []);
@@ -255,6 +342,37 @@ export default function AzotaExamResult() {
     XLSX.writeFile(wb, 'diem-cham-azota.xlsx');
   };
 
+  const handleSort = (col) => {
+    if (sortCol === col) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortCol(col);
+      setSortDir('asc');
+    }
+  };
+
+  const sortedIndices = (() => {
+    const indices = rows.map((_, i) => i);
+    if (!sortCol) return indices;
+    const getValue = (row) => {
+      switch (sortCol) {
+        case 'studentName': return (row.studentName || '').toLowerCase();
+        case 'mark': return row.mark != null ? parseFloat(row.mark) || 0 : -1;
+        case 'recognizedName': return (row.recognizedName || '').toLowerCase();
+        case 'score': return row.score != null ? Number(row.score) : -1;
+        case 'hasImage': return row.nameImageDataUrl ? 1 : 0;
+        default: return 0;
+      }
+    };
+    indices.sort((a, b) => {
+      const va = getValue(rows[a]);
+      const vb = getValue(rows[b]);
+      const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return indices;
+  })();
+
   return (
     <Box>
       <Typography variant="h5" sx={{ mb: 2, fontFamily: 'Lora, Georgia, serif' }}>
@@ -264,24 +382,44 @@ export default function AzotaExamResult() {
         Lấy kết quả chấm từ Azota theo Exam ID, OCR ảnh tên (nếu có), khớp với danh sách lớp. Cần Python OCR service chạy (port 8000).
       </Typography>
       
-      {ocrServiceStatus === 'error' && (
+      {ocrServiceStatus === 'error' && vlmServiceStatus === 'error' && (
         <Alert severity="warning" sx={{ mb: 2 }}>
           <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-            ⚠️ OCR Service chưa chạy
+            OCR / VLM Service chưa chạy
           </Typography>
           <Typography variant="body2" component="div">
-            Vui lòng khởi động Python OCR service trước khi xử lý:
+            Khởi động ít nhất một service trước khi xử lý:
             <Box component="pre" sx={{ mt: 1, p: 1, bgcolor: 'grey.100', borderRadius: 1, fontSize: '0.875rem', overflow: 'auto' }}>
-{`cd python/ocr-service
-uvicorn main:app --reload --port 8000`}
+{`# OCR (EasyOCR/PaddleOCR):
+cd python/ocr-service && uvicorn main:app --reload --port 8000
+
+# VLM / Gemini (port 8001):
+cd python/vlm-service && set VLM_ENGINE=gemini && set GEMINI_API_KEY=your-key && .\\run.ps1`}
             </Box>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+              Để ảnh được gửi tới Gemini: khởi động server Node với <strong>OCR_ENGINE_MODE=vlm</strong> (thêm vào .env hoặc: <code>set OCR_ENGINE_MODE=vlm</code> rồi chạy npm run dev).
+            </Typography>
           </Typography>
         </Alert>
       )}
-      
-      {ocrServiceStatus === 'ok' && (
+
+      {(ocrServiceStatus === 'ok' || vlmServiceStatus === 'ok') && (
         <Alert severity="success" sx={{ mb: 2 }}>
-          ✅ OCR Service đang chạy
+          {ocrServiceStatus === 'ok' && vlmServiceStatus === 'ok'
+            ? 'OCR Service (port 8000) + VLM Service (port 8001) đang chạy'
+            : ocrServiceStatus === 'ok'
+              ? 'OCR Service đang chạy (port 8000)'
+              : 'VLM Service đang chạy (port 8001)'}
+          {activeEngine && (
+            <Typography component="span" variant="body2" sx={{ ml: 1, fontWeight: 'bold' }}>
+              — Engine: {activeEngine.toUpperCase()}
+            </Typography>
+          )}
+          {activeEngine === 'vlm' && (
+            <Typography component="div" variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              Để ảnh được gửi tới Gemini/VLM, cần khởi động server Node với biến môi trường OCR_ENGINE_MODE=vlm (ví dụ trong .env hoặc: set OCR_ENGINE_MODE=vlm &amp;&amp; npm run dev).
+            </Typography>
+          )}
         </Alert>
       )}
 
@@ -429,125 +567,178 @@ uvicorn main:app --reload --port 8000`}
               Xuất Excel
             </Button>
           </Box>
-          <TableContainer component={Paper}>
-            <Table size="small" sx={{ '& .drag-over': { bgcolor: 'action.hover' } }}>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Ảnh tên (OCR)</TableCell>
-                  <TableCell>Tên trong lớp</TableCell>
-                  <TableCell>Điểm chấm</TableCell>
-                  <TableCell>Tên đọc được (OCR)</TableCell>
-                  <TableCell align="right">Độ khớp (%)</TableCell>
-                  {sourceType === SOURCE_TYPES.class && classId && (
-                    <TableCell>Thao tác</TableCell>
-                  )}
-                  {classStudents.length > 0 && (
-                    <TableCell sx={{ minWidth: 160 }}>Tên chưa khớp (kéo thả)</TableCell>
-                  )}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {rows.map((row, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell sx={{ verticalAlign: 'middle' }}>
-                      {row.nameImageDataUrl ? (
-                        <img
-                          src={row.nameImageDataUrl}
-                          alt="Ảnh tên đưa vào OCR"
-                          title="Ảnh crop tên đã đưa qua OCR"
-                          style={{ maxHeight: 56, maxWidth: 120, objectFit: 'contain', display: 'block' }}
-                        />
-                      ) : row.nameImageUrl ? (
-                        <Typography variant="caption" color="text.secondary">Có URL (chưa tải ảnh)</Typography>
-                      ) : (
-                        '—'
+          <DndContext sensors={sensors} onDragStart={handleDndDragStart} onDragEnd={handleDndDragEnd}>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+              <TableContainer component={Paper} sx={{ flex: 1, minWidth: 0 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sortDirection={sortCol === 'hasImage' ? sortDir : false}>
+                        <TableSortLabel active={sortCol === 'hasImage'} direction={sortCol === 'hasImage' ? sortDir : 'asc'} onClick={() => handleSort('hasImage')}>
+                          Ảnh tên
+                        </TableSortLabel>
+                      </TableCell>
+                      <TableCell sortDirection={sortCol === 'studentName' ? sortDir : false}>
+                        <TableSortLabel active={sortCol === 'studentName'} direction={sortCol === 'studentName' ? sortDir : 'asc'} onClick={() => handleSort('studentName')}>
+                          Tên trong lớp
+                        </TableSortLabel>
+                      </TableCell>
+                      <TableCell sortDirection={sortCol === 'mark' ? sortDir : false}>
+                        <TableSortLabel active={sortCol === 'mark'} direction={sortCol === 'mark' ? sortDir : 'asc'} onClick={() => handleSort('mark')}>
+                          Điểm chấm
+                        </TableSortLabel>
+                      </TableCell>
+                      <TableCell sortDirection={sortCol === 'recognizedName' ? sortDir : false}>
+                        <TableSortLabel active={sortCol === 'recognizedName'} direction={sortCol === 'recognizedName' ? sortDir : 'asc'} onClick={() => handleSort('recognizedName')}>
+                          Tên đọc được
+                        </TableSortLabel>
+                      </TableCell>
+                      <TableCell align="right" sortDirection={sortCol === 'score' ? sortDir : false}>
+                        <TableSortLabel active={sortCol === 'score'} direction={sortCol === 'score' ? sortDir : 'asc'} onClick={() => handleSort('score')}>
+                          Độ khớp
+                        </TableSortLabel>
+                      </TableCell>
+                      {sourceType === SOURCE_TYPES.class && classId && (
+                        <TableCell>Thao tác</TableCell>
                       )}
-                    </TableCell>
-                    <TableCell
-                      draggable={!!row.studentId}
-                      onDragStart={(e) => row.studentId && handleDragStart(e, { type: 'row', rowIndex: idx, studentId: row.studentId, studentName: row.studentName })}
-                      onDrop={(e) => handleDropOnRow(e, idx)}
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      sx={{
-                        cursor: row.studentId ? 'grab' : 'default',
-                        verticalAlign: 'middle',
-                        minWidth: 140,
-                        border: '1px dashed transparent',
-                        borderRadius: 1,
-                        '&:active': row.studentId ? { cursor: 'grabbing' } : {},
-                      }}
-                      title={row.studentId ? 'Kéo để đổi chỗ hoặc bỏ vào cột bên phải' : 'Thả tên từ cột bên phải vào đây'}
-                    >
-                      {row.studentName || '—'}
-                      {row.matchFallback && (
-                        <Typography component="span" variant="caption" color="warning.main" sx={{ ml: 0.5 }} title="Khớp gần (độ tương đồng dưới ngưỡng chuẩn)">
-                          (gần)
-                        </Typography>
-                      )}
-                    </TableCell>
-                    <TableCell>{row.mark != null ? row.mark : '—'}</TableCell>
-                    <TableCell>{row.recognizedName || '—'}</TableCell>
-                    <TableCell align="right">{row.score != null ? row.score : '—'}</TableCell>
-                    {sourceType === SOURCE_TYPES.class && classId && (
-                      <TableCell>
-                        {row.studentId && row.nameImageDataUrl ? (
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() => handleSaveSample(row, idx)}
-                            disabled={savingRowIndex !== null}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {sortedIndices.map((origIdx) => {
+                      const row = rows[origIdx];
+                      const hasName = !!(row.studentId || row.studentName);
+                      const isEmpty = !hasName;
+                      const canDrag = hasName;
+                      return (
+                        <TableRow
+                          key={origIdx}
+                          sx={{
+                            bgcolor: isEmpty ? 'action.hover' : scoreBg(row.score),
+                            '&:hover': { bgcolor: isEmpty ? 'action.selected' : undefined },
+                          }}
+                        >
+                          <TableCell sx={{ verticalAlign: 'middle' }}>
+                            {row.nameImageDataUrl ? (
+                              <img
+                                src={row.nameImageDataUrl}
+                                alt="Ảnh tên"
+                                style={{ maxHeight: 56, maxWidth: 120, objectFit: 'contain', display: 'block' }}
+                              />
+                            ) : row.nameImageUrl ? (
+                              <Typography variant="caption" color="text.secondary">URL</Typography>
+                            ) : (
+                              '—'
+                            )}
+                          </TableCell>
+                          <DroppableCell
+                            id={`cell-${origIdx}`}
+                            data={{ type: 'cell', rowIndex: origIdx }}
+                            isEmpty={isEmpty}
                           >
-                            {savingRowIndex === idx ? 'Đang lưu...' : 'Lưu mẫu chữ'}
-                          </Button>
-                        ) : (
-                          '—'
-                        )}
-                      </TableCell>
-                    )}
-                    {classStudents.length > 0 && idx === 0 && (
-                      <TableCell
-                        rowSpan={rows.length}
-                        onDrop={handleDropOnUnmatched}
-                        onDragOver={handleDragOver}
-                        onDragLeave={handleDragLeave}
-                        sx={{
-                          verticalAlign: 'top',
-                          minWidth: 160,
-                          maxWidth: 220,
-                          border: '1px dashed',
-                          borderColor: 'divider',
-                          borderRadius: 1,
-                          bgcolor: 'grey.50',
-                          p: 1,
-                        }}
-                        title="Thả tên từ dòng vào đây để bỏ khớp"
-                      >
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                          Chưa khớp — kéo vào dòng để gán
-                        </Typography>
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                          {unmatchedStudents.map((s) => (
-                            <Chip
-                              key={s.id}
-                              label={s.hoTen || s.name || `#${s.id}`}
-                              size="small"
-                              draggable
-                              onDragStart={(e) => handleDragStart(e, { type: 'unmatched', id: s.id, hoTen: s.hoTen || s.name })}
-                              sx={{ cursor: 'grab', '&:active': { cursor: 'grabbing' } }}
-                            />
-                          ))}
-                          {unmatchedStudents.length === 0 && (
-                            <Typography variant="caption" color="text.secondary">Đã khớp hết</Typography>
+                            {hasName ? (
+                              <DraggableName
+                                id={`row-${origIdx}`}
+                                data={{ type: 'row', rowIndex: origIdx, studentId: row.studentId || row.studentName, studentName: row.studentName }}
+                              >
+                                <Chip
+                                  label={row.studentName}
+                                  size="small"
+                                  color={row.matchFallback ? 'warning' : 'primary'}
+                                  variant={row.matchFallback ? 'outlined' : 'filled'}
+                                  sx={{ cursor: 'grab', '&:active': { cursor: 'grabbing' } }}
+                                />
+                              </DraggableName>
+                            ) : (
+                              <Typography variant="body2" color="text.disabled">—</Typography>
+                            )}
+                          </DroppableCell>
+                          <TableCell>{row.mark != null ? row.mark : '—'}</TableCell>
+                          <TableCell>
+                            <Typography variant="body2" noWrap sx={{ maxWidth: 140 }} title={row.recognizedName || ''}>
+                              {row.recognizedName || '—'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right">
+                            {row.score != null && row.score > 0 ? (
+                              <Typography variant="body2" sx={{ fontWeight: 600, color: scoreColor(row.score) }}>
+                                {row.score}
+                              </Typography>
+                            ) : (
+                              <Typography variant="body2" color="text.disabled">—</Typography>
+                            )}
+                          </TableCell>
+                          {sourceType === SOURCE_TYPES.class && classId && (
+                            <TableCell>
+                              {row.studentId && row.nameImageDataUrl ? (
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => handleSaveSample(row, origIdx)}
+                                  disabled={savingRowIndex !== null}
+                                >
+                                  {savingRowIndex === origIdx ? 'Đang lưu...' : 'Lưu mẫu'}
+                                </Button>
+                              ) : (
+                                '—'
+                              )}
+                            </TableCell>
                           )}
-                        </Box>
-                      </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              {(classStudents.length > 0 || allStudentNames.length > 0) && (
+                <DroppableSidebar>
+                  <Typography variant="subtitle2" sx={{ mb: 1, fontSize: '0.8rem' }}>
+                    Chưa khớp ({unmatchedStudents.length})
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                    Kéo tên vào cột "Tên trong lớp"
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                    {unmatchedStudents.map((s) => (
+                      <DraggableName
+                        key={s.id}
+                        id={`unmatched-${s.id}`}
+                        data={{ type: 'unmatched', id: s.id, hoTen: s.hoTen }}
+                      >
+                        <Chip
+                          label={s.hoTen || `#${s.id}`}
+                          size="small"
+                          variant="outlined"
+                          sx={{
+                            cursor: 'grab',
+                            width: '100%',
+                            justifyContent: 'flex-start',
+                            '&:active': { cursor: 'grabbing' },
+                          }}
+                        />
+                      </DraggableName>
+                    ))}
+                    {unmatchedStudents.length === 0 && (
+                      <Typography variant="caption" color="success.main" sx={{ textAlign: 'center', py: 1 }}>
+                        Khớp hết!
+                      </Typography>
                     )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                  </Box>
+                </DroppableSidebar>
+              )}
+            </Box>
+
+            <DragOverlay dropAnimation={null}>
+              {activeDrag && (
+                <Chip
+                  label={activeDrag.hoTen || activeDrag.studentName || '?'}
+                  size="small"
+                  color="primary"
+                  sx={{ boxShadow: 4, cursor: 'grabbing' }}
+                />
+              )}
+            </DragOverlay>
+          </DndContext>
         </>
       )}
     </Box>

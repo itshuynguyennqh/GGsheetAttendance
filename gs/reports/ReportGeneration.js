@@ -160,6 +160,7 @@ function loadPreviousMonthReport(sheetName) {
     chiTietDiem: _findColByHeader(h, "Chi tiết điểm") >= 0 ? _findColByHeader(h, "Chi tiết điểm") : 4,
     loi: _findColByHeader(h, "Lỗi (BTVN/TV/YT)") >= 0 ? _findColByHeader(h, "Lỗi (BTVN/TV/YT)") : 5,
     chiSoBTVN: _findColByHeader(h, "Chỉ số BTVN Azota") >= 0 ? _findColByHeader(h, "Chỉ số BTVN Azota") : 6,
+    soBuoiNghi: _findColByHeader(h, "Số buổi nghỉ"),
     nhom: _findColByHeader(h, "Nhóm") >= 0 ? _findColByHeader(h, "Nhóm") : 7,
     tcDiemTB: _findColByHeader(h, "TC Điểm TB") >= 0 ? _findColByHeader(h, "TC Điểm TB") : 8,
     tcThaiDo: _findColByHeader(h, "TC Thái độ") >= 0 ? _findColByHeader(h, "TC Thái độ") : 9,
@@ -174,11 +175,17 @@ function loadPreviousMonthReport(sheetName) {
     var norm = normalizeHVCode(String(id).trim());
     var tcThaiVal = _prevCellStr(rowD[col.tcThaiDo]);
     var tcPhatVal = _prevCellStr(rowD[col.tcChepPhat]);
+    var soBuoiNghiVal = null;
+    if (col.soBuoiNghi >= 0 && col.soBuoiNghi < rowD.length) {
+      var v = parseInt(String(rowD[col.soBuoiNghi] || "0"), 10);
+      soBuoiNghiVal = isNaN(v) ? null : v;
+    }
     result[norm] = {
       diemTB: _prevCellStr(rowD[col.diemTB]),
       chiTietDiem: _prevCellStr(rowD[col.chiTietDiem]),
       loi: _prevCellStr(rowD[col.loi]),
       chiSoBTVN: _prevCellStr(rowD[col.chiSoBTVN]),
+      soBuoiNghi: soBuoiNghiVal,
       nhom: _prevCellStr(rowD[col.nhom]),
       tcDiemTB: _prevCellStr(rowD[col.tcDiemTB]),
       tcThaiDo: tcThaiVal !== "" ? tcThaiVal.split("\n")[0].trim() : "",
@@ -266,49 +273,91 @@ function _parseBTVNAzotaRate(s) {
 
 /**
  * Tính xu hướng: Cải thiện / Sa sút / Ổn định / —
+ * 6 phiếu bầu (bỏ Nhóm): Điểm TB, Thái độ, BTVN Azota, Chép phạt, Tổng lỗi, Chuyên cần.
+ * Trả về { result, improve, decline, reasonsImprove, reasonsDecline }.
  */
 function computeXuHuong(prev, current) {
-  if (!prev) return "—";
+  var reasonsImprove = [], reasonsDecline = [];
+  if (!prev) return { result: "—", improve: 0, decline: 0, reasonsImprove: [], reasonsDecline: [] };
   var improve = 0, decline = 0;
+
+  // 1. Điểm TB
   var pAvg = parseFloat(String(prev.diemTB || "").replace(",", "."));
   var cAvg = parseFloat(String(current.avg || "").replace(",", "."));
   if (!isNaN(pAvg) && !isNaN(cAvg)) {
-    if (cAvg > pAvg) improve++;
-    else if (cAvg < pAvg) decline++;
+    if (cAvg > pAvg) { improve += 1; reasonsImprove.push("Điểm TB tăng"); }
+    else if (cAvg < pAvg) { decline += 1; reasonsDecline.push("Điểm TB giảm"); }
   }
-  var pGroup = parseInt(prev.nhom, 10);
-  var cGroup = current.group;
-  if (!isNaN(pGroup) && typeof cGroup === "number") {
-    if (cGroup < pGroup) improve++;
-    else if (cGroup > pGroup) decline++;
-  }
+
+  // 2. Thái độ
   var rThaiPrev = _rankIndicator(prev.tcThaiDo);
   var rThaiCur = _rankIndicator(current.tcThaiDo);
   if (rThaiPrev >= 0 && rThaiCur >= 0) {
-    if (rThaiCur > rThaiPrev) improve++;
-    else if (rThaiCur < rThaiPrev) decline++;
+    if (rThaiCur > rThaiPrev) { improve += 1; reasonsImprove.push("Thái độ cải thiện"); }
+    else if (rThaiCur < rThaiPrev) { decline += 1; reasonsDecline.push("Thái độ tụt cấp"); }
+    else if (rThaiCur === 2) { improve += 0.5; reasonsImprove.push("Thái độ duy trì ok"); }
   }
-  var rPhatPrev = _rankIndicator(prev.tcChepPhat);
-  var rPhatCur = _rankIndicator(current.tcChepPhat);
-  if (rPhatPrev >= 0 && rPhatCur >= 0) {
-    if (rPhatCur > rPhatPrev) improve++;
-    else if (rPhatCur < rPhatPrev) decline++;
-  }
-  var pLoi = _parseLoiTotal(prev.loi);
-  var cLoi = current.loiTotal;
-  if (pLoi !== null && cLoi !== null) {
-    if (cLoi < pLoi) improve++;
-    else if (cLoi > pLoi) decline++;
-  }
+
+  // 3. BTVN Azota
   var pBtvn = _parseBTVNAzotaRate(prev.chiSoBTVN);
   var cBtvn = current.btvnAzotaPct;
   if (pBtvn !== null && !isNaN(pBtvn) && cBtvn !== null && !isNaN(cBtvn)) {
-    if (cBtvn > pBtvn) improve++;
-    else if (cBtvn < pBtvn) decline++;
+    if (cBtvn > pBtvn) { improve += 1; reasonsImprove.push("BTVN Azota tăng"); }
+    else if (cBtvn < pBtvn) { decline += 1; reasonsDecline.push("BTVN Azota giảm"); }
+    else if (cBtvn > 90) { improve += 0.5; reasonsImprove.push("BTVN Azota duy trì >90%"); }
   }
-  if (improve > decline) return "Cải thiện";
-  if (decline > improve) return "Sa sút";
-  return "Ổn định";
+
+  // 4. Chép phạt
+  var rPhatPrev = _rankIndicator(prev.tcChepPhat);
+  var rPhatCur = _rankIndicator(current.tcChepPhat);
+  if (rPhatPrev >= 0 && rPhatCur >= 0) {
+    if (rPhatCur > rPhatPrev) { improve += 1; reasonsImprove.push("Chép phạt cải thiện"); }
+    else if (rPhatCur < rPhatPrev) { decline += 1; reasonsDecline.push("Chép phạt xuất hiện xấu"); }
+    else if (rPhatCur === 2) { improve += 0.5; reasonsImprove.push("Chép phạt duy trì ok"); }
+  }
+
+  // 5. Tổng lỗi
+  var pLoi = _parseLoiTotal(prev.loi);
+  var cLoi = current.loiTotal;
+  if (pLoi !== null && cLoi !== null) {
+    if (cLoi < pLoi) { improve += 1; reasonsImprove.push("Lỗi giảm"); }
+    else if (cLoi > pLoi) { decline += 1; reasonsDecline.push("Lỗi tăng"); }
+    else if (cLoi === 0) { improve += 0.5; reasonsImprove.push("Duy trì 0 lỗi"); }
+  }
+
+  // 6. Chuyên cần
+  var pNghi = prev.soBuoiNghi;
+  var cNghi = current.soBuoiNghi;
+  if (typeof pNghi === "number" && typeof cNghi === "number") {
+    if (cNghi < pNghi) { improve += 1; reasonsImprove.push("Nghỉ ít hơn"); }
+    else if (cNghi > pNghi) { decline += 1; reasonsDecline.push("Nghỉ nhiều hơn"); }
+    else if (cNghi === 0) { improve += 0.5; reasonsImprove.push("Không nghỉ buổi nào"); }
+  } else if (typeof cNghi === "number" && cNghi === 0) {
+    improve += 0.5;
+    reasonsImprove.push("Không nghỉ buổi nào");
+  }
+
+  var result = "Ổn định";
+  if (improve > decline) result = "Cải thiện";
+  else if (decline > improve) result = "Sa sút";
+  return { result: result, improve: improve, decline: decline, reasonsImprove: reasonsImprove, reasonsDecline: reasonsDecline };
+}
+
+/**
+ * Format chi tiết xu hướng: Cộng X (lý do) | Trừ Y (lý do)
+ */
+function _formatXuHuongDetail(xuHuong) {
+  if (!xuHuong || xuHuong.result === "—") return "";
+  var parts = [];
+  if (xuHuong.improve > 0) {
+    var impVal = xuHuong.improve % 1 === 0 ? xuHuong.improve : xuHuong.improve.toFixed(1);
+    parts.push("Cộng " + impVal + (xuHuong.reasonsImprove.length > 0 ? ": " + xuHuong.reasonsImprove.join(", ") : ""));
+  }
+  if (xuHuong.decline > 0) {
+    var decVal = xuHuong.decline % 1 === 0 ? xuHuong.decline : xuHuong.decline.toFixed(1);
+    parts.push("Trừ " + decVal + (xuHuong.reasonsDecline.length > 0 ? ": " + xuHuong.reasonsDecline.join(", ") : ""));
+  }
+  return parts.length > 0 ? parts.join(" | ") : "";
 }
 
 /**
@@ -455,7 +504,7 @@ function generateRangeReport(startStr, endStr, btvnRange, compareSheetName, atte
   var rangeDateStr = formatDateVN(startDate) + " - " + formatDateVN(endDate);
   var monthLabel = getMonthLabel(startDate);
   var baseHeaders = ["Mã HV", "Họ Tên", "Lớp", "Điểm TB", "Chi tiết điểm", "Lỗi (BTVN/TV/YT)", "Chỉ số BTVN Azota", "Số buổi đi", "Số buổi nghỉ", "Nhóm", "TC Điểm TB", "TC Thái độ", "TC BTVN Azota", "TC Chép phạt", "Nhận xét chưa nhận diện", "Nội dung tin nhắn"];
-  var prevHeaders = prevData ? ["Điểm TB (T.trước)", "Chi tiết điểm (T.trước)", "Lỗi (T.trước)", "Chỉ số BTVN Azota (T.trước)", "Nhóm (T.trước)", "TC Điểm TB (T.trước)", "TC Thái độ (T.trước)", "TC BTVN Azota (T.trước)", "TC Chép phạt (T.trước)", "Xu hướng"] : [];
+  var prevHeaders = prevData ? ["Điểm TB (T.trước)", "Chi tiết điểm (T.trước)", "Lỗi (T.trước)", "Chỉ số BTVN Azota (T.trước)", "Nhóm (T.trước)", "TC Điểm TB (T.trước)", "TC Thái độ (T.trước)", "TC BTVN Azota (T.trước)", "TC Chép phạt (T.trước)", "Xu hướng", "Chi tiết xu hướng"] : [];
   var out = [baseHeaders.concat(prevHeaders)];
   var richTextThaiDo = [];
   var richTextChepPhat = [];
@@ -515,8 +564,11 @@ function generateRangeReport(startStr, endStr, btvnRange, compareSheetName, atte
       var prevVals = prev ? [prev.diemTB, prev.chiTietDiem, prev.loi, prev.chiSoBTVN, prev.nhom, prev.tcDiemTB, prev.tcThaiDo, prev.tcBTVNAzota, prev.tcChepPhat] : ["", "", "", "", "", "", "", "", ""];
       var loiTotal = s.errors.btvn + s.errors.vocab + s.errors.att;
       var btvnAzotaPct = s.btvnAzota.total > 0 ? (s.btvnAzota.completed / s.btvnAzota.total * 100) : null;
-      var currentForXuHuong = { avg: avg, group: group, tcThaiDo: indicators.thaiDo, tcChepPhat: indicators.chepPhat, loiTotal: loiTotal, btvnAzotaPct: btvnAzotaPct };
-      rowData = rowData.concat(prevVals).concat(computeXuHuong(prev, currentForXuHuong));
+      var soBuoiNghiNum = (s.attendance && s.attendance.nghi != null) ? s.attendance.nghi : null;
+      var currentForXuHuong = { avg: avg, group: group, tcThaiDo: indicators.thaiDo, tcChepPhat: indicators.chepPhat, loiTotal: loiTotal, btvnAzotaPct: btvnAzotaPct, soBuoiNghi: soBuoiNghiNum };
+      var xuHuong = computeXuHuong(prev, currentForXuHuong);
+      var xuHuongDetail = _formatXuHuongDetail(xuHuong);
+      rowData = rowData.concat(prevVals).concat(xuHuong.result, xuHuongDetail);
     }
     out.push(rowData);
   }

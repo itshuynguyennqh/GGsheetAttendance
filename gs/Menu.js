@@ -13,6 +13,8 @@ function onOpen() {
     Logger.log("onOpen: Tạo menu Báo cáo Tháng");
     ui.createMenu("👉 Báo cáo Tháng")
       .addItem("📅 1. Tạo báo cáo tổng hợp (Gửi PH)", "showDateRangePicker")
+      .addItem("📈 1a. Bảng tương quan (sau khi tạo báo cáo)", "generateCorrelationMatrix")
+      .addItem("💬 1b. Chỉ tạo lại nội dung tin nhắn (mẫu mới)", "showRegenerateMessagesDialog")
       .addSeparator()
       .addItem("🚨 2. Tìm HS vi phạm (BTVN/Ý thức)", "showWarningDialog")
       .addItem("🛑 3. Cảnh báo Điểm danh (Nghỉ nhiều)", "showAttendanceWarningDialog")
@@ -36,12 +38,15 @@ function onOpen() {
     ui.createMenu("📅 Báo cáo Buổi")
       .addItem("📥 1. Kéo điểm danh sang BaoCao", "showAttendanceExportDialog")
       .addItem("📝 2. Kéo nhận xét Azota", "processBTVNAzota")
-      .addItem("📊 2a. Kéo điểm chấm Azota (exam-result)", "pullAzotaExamResult")
-      .addItem("🔑 2A. Kéo điểm chấm Azota (dùng API key từ dialog)", "pullAzotaExamResultWithDialog")
+      .addItem("📊 2a. Kéo điểm Azota → xác minh rồi ghi", "pullAzotaExamResult")
+      .addItem("⚡ 2a nhanh. Ghi thẳng (không xem trước)", "pullAzotaExamResultDirect")
+      .addItem("🔑 2A. Giống 2a (dialog xác minh)", "pullAzotaExamResultWithDialog")
       .addSeparator()
       .addItem("🤖 3. AI Tạo Đáp Án & Báo Cáo", "showAiInputDialog")
       .addSeparator()
       .addItem("🔑 Cập nhật Gemini API Key", "updateGeminiApiKey")
+      .addItem("🧠 Đổi model Gemini (OCR / AI)", "updateGeminiModel")
+      .addItem("ℹ️ Xem model Gemini đang dùng", "showGeminiModelInfo")
       .addToUi();
     Logger.log("onOpen: Menu đã thêm xong");
 
