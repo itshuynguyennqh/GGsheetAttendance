@@ -519,7 +519,7 @@ router.post('/process', async (req, res) => {
     }, Date.now() - ocrLoopStart);
 
     const MATCH_THRESHOLD = 75;
-    const FALLBACK_MIN_SCORE = 60;
+    const FALLBACK_MIN_SCORE = 60; // Tên gần nhất khi không đạt ngưỡng (để người dùng xác nhận)
     let matches;
     let matchFallbackUsed = false;
     logger.matchCall(recognizedNames.length, studentNames.length, MATCH_THRESHOLD);

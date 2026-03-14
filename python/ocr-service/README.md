@@ -51,6 +51,7 @@ pip install -r requirements.txt
 - **Dilation** (nét chữ rời rạc): `set PREPROCESS_DILATION=1`
 - **Xóa dòng chấm** (morphological): `set PREPROCESS_REMOVE_DOTS=1`
 - **Model server** (viết tay tốt hơn, RAM 16GB+): `set OCR_MODEL=ppocrv5_server`
+- **Model Latin server** (RAM 16GB+): `set OCR_MODEL=latin_ppocrv5_server`
 - **OpenVINO** (tối ưu Intel): `pip install onnxruntime-openvino` rồi `set USE_OPENVINO=1`
 
 ### Windows (PowerShell)
