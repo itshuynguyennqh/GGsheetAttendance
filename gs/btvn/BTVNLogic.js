@@ -460,7 +460,6 @@ function extractHashids(externalSS, x) {
     
     allFormats.add(cellValueStr);
     
-    // Kiểm tra nếu là x
     if (cellValueStr.toLowerCase() === xStr.toLowerCase()) {
       if (!foundX) {
         firstXRow = i + 1;
@@ -469,89 +468,80 @@ function extractHashids(externalSS, x) {
       }
     }
   }
-  
-  if (!foundX) {
-    _log('DANH SÁCH BÀI', 'Kết quả: KHÔNG tìm thấy x = "' + xStr + '" trong sheet');
-    const formats = Array.from(allFormats).sort();
-    const sample = formats.length <= 12 ? formats.join(' | ') : formats.slice(0, 12).join(' | ') + ' | ... (tổng ' + formats.length + ' giá trị)';
-    _log('DANH SÁCH BÀI', '  → Các giá trị Format trong sheet: ' + sample);
-    return hashids;
-  }
-  
-  // Bước 2: Tìm y là giá trị Format nhỏ hơn x gần nhất
+
   const formatsArray = Array.from(allFormats);
+  const formatsSample = formatsArray.length <= 12 ? formatsArray.sort().join(' | ') : formatsArray.sort().slice(0, 12).join(' | ') + ' | ... (tổng ' + formatsArray.length + ')';
+
+  // y = format lớn nhất vẫn nhỏ hơn x (dùng để lấy hashid — cùng bài/kỳ trước)
   let y = null;
-  let maxSmallerFormat = null;
-  
   for (let i = 0; i < formatsArray.length; i++) {
     const format = formatsArray[i];
-    
-    // Bỏ qua chính x
-    if (format.toLowerCase() === xStr.toLowerCase()) {
-      continue;
-    }
-    
-    // So sánh với x: nếu format < x
-    const comparison = compareFormat(format, xStr);
-    if (comparison < 0) {
-      // format < x, kiểm tra xem có lớn hơn maxSmallerFormat hiện tại không
-      if (maxSmallerFormat === null || compareFormat(format, maxSmallerFormat) > 0) {
-        maxSmallerFormat = format;
-      }
+    if (format.toLowerCase() === xStr.toLowerCase()) continue;
+    if (compareFormat(format, xStr) < 0) {
+      if (y === null || compareFormat(format, y) > 0) y = format;
     }
   }
-  
-  y = maxSmallerFormat;
-  
+
+  if (!foundX) {
+    _log('DANH SÁCH BÀI', 'KHÔNG có dòng Format = x "' + xStr + '" trong Danh sách Bài.');
+    _log('DANH SÁCH BÀI', '  → Fallback: lấy hashid theo format lớn nhất nhỏ hơn x' + (y ? ': y="' + y + '"' : ' (không có format nào < x)'));
+    _log('DANH SÁCH BÀI', '  → Format trong sheet: ' + formatsSample);
+  }
+
   if (y === null) {
-    _log('DANH SÁCH BÀI', 'Kết quả: KHÔNG tìm thấy giá trị Format nào nhỏ hơn x = "' + xStr + '"');
-    _log('DANH SÁCH BÀI', '  → Tất cả các Format trong sheet đều >= x');
+    _log('DANH SÁCH BÀI', 'Kết quả: không có Format nào nhỏ hơn x = "' + xStr + '" → không hashid');
     return hashids;
   }
-  
-  _log('DANH SÁCH BÀI', 'Tìm thấy y = "' + y + '" (giá trị Format nhỏ hơn x = "' + xStr + '" gần nhất)');
-  
-  // Bước 3: Lấy hashid từ tất cả các dòng có Format = y
+
+  _log('DANH SÁCH BÀI', 'Lấy hashid từ Format y = "' + y + '" (lớn nhất mà vẫn < x "' + xStr + '")' + (foundX ? '' : ' [fallback]'));
+
+  /** Gom hashid từ mọi dòng có Format = formatTarget */
+  function collectHashidsForFormat(formatTarget) {
+    const out = [];
+    for (let i = 0; i < data.length; i++) {
+      const cellValueStr = data[i][columnMapping.format] ? String(data[i][columnMapping.format]).trim() : '';
+      if (!cellValueStr || cellValueStr.toLowerCase() !== formatTarget.toLowerCase()) continue;
+      const linkKetQuaValue = data[i][columnMapping.linkKetQua];
+      if (!linkKetQuaValue || linkKetQuaValue === '') continue;
+      const linkKetQuaStr = String(linkKetQuaValue).trim();
+      const beforeQuery = linkKetQuaStr.split('?')[0].trim();
+      const segments = beforeQuery.split('/').filter(function (s) { return s.length > 0; });
+      const hashid = segments.length > 0 ? segments[segments.length - 1] : null;
+      if (hashid && hashid.length >= 4 && hashid.length <= 32 && out.indexOf(hashid) === -1) {
+        out.push(hashid);
+      }
+    }
+    return out;
+  }
+
+  hashids.push.apply(hashids, collectHashidsForFormat(y));
+
+  // Vẫn rỗng: thử lần lượt các format nhỏ hơn x (từ lớn đến bé) cho tới khi có link
+  if (hashids.length === 0) {
+    const smallerSorted = formatsArray.filter(function (f) {
+      return compareFormat(f, xStr) < 0;
+    });
+    smallerSorted.sort(function (a, b) {
+      return -compareFormat(a, b);
+    });
+    for (let s = 0; s < smallerSorted.length && hashids.length === 0; s++) {
+      const tryY = smallerSorted[s];
+      const more = collectHashidsForFormat(tryY);
+      if (more.length > 0) {
+        hashids.push.apply(hashids, more);
+        _log('DANH SÁCH BÀI', 'Fallback bổ sung: y="' + tryY + '" có ' + more.length + ' hashid');
+        break;
+      }
+    }
+  }
+
   let countFormatY = 0;
   let countWithLink = 0;
-  
   for (let i = 0; i < data.length; i++) {
-    const cellValue = data[i][columnMapping.format];
-    const cellValueStr = cellValue ? String(cellValue).trim() : '';
-    
-    // Bỏ qua dòng trống
-    if (!cellValueStr) continue;
-    
-    // Chỉ lấy hashid từ các dòng có Format = y
+    const cellValueStr = data[i][columnMapping.format] ? String(data[i][columnMapping.format]).trim() : '';
     if (cellValueStr.toLowerCase() === y.toLowerCase()) {
       countFormatY++;
-      const linkKetQuaValue = data[i][columnMapping.linkKetQua];
-      if (linkKetQuaValue && linkKetQuaValue !== '') {
-        countWithLink++;
-        const linkKetQuaStr = String(linkKetQuaValue).trim();
-        
-        // Extract hashid từ URL
-        // Định dạng: https://azota.vn/de-thi/pkarzl → hashid = "pkarzl" (đoạn path cuối, thường 6 ký tự)
-        let hashid = null;
-        const beforeQuery = linkKetQuaStr.split('?')[0].trim();
-        const segments = beforeQuery.split('/').filter(function (s) { return s.length > 0; });
-        if (segments.length > 0) {
-          hashid = segments[segments.length - 1];
-          Logger.log('Tìm thấy hashid từ URL (đoạn path cuối): ' + hashid);
-        }
-        
-        // Validate: thường 6 ký tự, chấp nhận 4–32 ký tự (chữ hoặc số)
-        if (hashid && hashid.length >= 4 && hashid.length <= 32) {
-          if (!hashids.includes(hashid)) {
-            hashids.push(hashid);
-            Logger.log('Thêm hashid: ' + hashid + ' từ dòng ' + (i + 1) + ' (Format = "' + y + '")');
-          }
-        } else {
-          Logger.log('Warning: Không thể extract hashid từ URL: ' + linkKetQuaStr);
-        }
-      } else {
-        Logger.log('Warning: Dòng ' + (i + 1) + ' không có giá trị trong cột "Link Kết quả"');
-      }
+      if (data[i][columnMapping.linkKetQua]) countWithLink++;
     }
   }
   
