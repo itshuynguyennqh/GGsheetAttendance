@@ -4,14 +4,41 @@
 
 const VALID_VALUES = new Set(['X', 'B', 'M', 'P', '', '-']);
 
+/**
+ * Parse tháng từ MM.YYYY hoặc YYYY.MM (DB chuẩn: YYYY.MM).
+ */
 function parseThang(thang) {
-  if (!thang || typeof thang !== 'string') return null;
-  const parts = thang.trim().split(/[.\/]/);
+  if (thang == null || thang === '') return null;
+  const parts = String(thang).trim().split(/[.\/]/);
   if (parts.length < 2) return null;
-  const month = parseInt(parts[0], 10);
-  const year = parseInt(parts[1], 10);
-  if (isNaN(month) || isNaN(year) || month < 1 || month > 12) return null;
+  const a = parseInt(parts[0], 10);
+  const b = parseInt(parts[1], 10);
+  if (Number.isNaN(a) || Number.isNaN(b)) return null;
+  let month;
+  let year;
+  if (a >= 1000) {
+    year = a;
+    month = b;
+  } else {
+    month = a;
+    year = b;
+  }
+  if (month < 1 || month > 12 || year < 1900 || year > 9999) return null;
   return { month, year };
+}
+
+/** Lưu DB & so khớp: YYYY.MM */
+function normalizeThang(thang) {
+  const p = parseThang(thang);
+  if (!p) return thang != null ? String(thang).trim() : '';
+  return `${p.year}.${String(p.month).padStart(2, '0')}`;
+}
+
+/** Hiển thị: YYYY.MM-BB */
+function formatThangBuoiLabel(thang, buoi) {
+  if (thang == null || thang === '' || buoi == null || Number.isNaN(Number(buoi))) return '—';
+  const t = normalizeThang(thang);
+  return `${t}-B${String(Number(buoi)).padStart(2, '0')}`;
 }
 
 function thangBuoiToNgayHoc(thang, buoi) {
@@ -52,17 +79,19 @@ function findStudent(db, { maHV, hoTen, classId }) {
 }
 
 function findSession(db, classId, thang, buoi) {
+  const t = normalizeThang(thang) || thang;
   return db.prepare(
     'SELECT * FROM sessions WHERE classId = ? AND thang = ? AND buoi = ?'
-  ).get(classId, thang, Number(buoi));
+  ).get(classId, t, Number(buoi));
 }
 
 function createSession(db, classId, thang, buoi) {
-  const ngayHoc = thangBuoiToNgayHoc(thang, buoi) || new Date().toISOString().slice(0, 10);
+  const t = normalizeThang(thang) || String(thang || '').trim();
+  const ngayHoc = thangBuoiToNgayHoc(t, buoi) || new Date().toISOString().slice(0, 10);
   const result = db.prepare(
     `INSERT INTO sessions (classId, ngayHoc, startTime, thang, buoi, noiDungHoc, sourceType, enableAttendance)
      VALUES (?, ?, '19:00', ?, ?, NULL, 'manual', 1)`
-  ).run(classId, ngayHoc, thang, Number(buoi));
+  ).run(classId, ngayHoc, t, Number(buoi));
   return db.prepare('SELECT * FROM sessions WHERE id = ?').get(result.lastInsertRowid);
 }
 
@@ -86,4 +115,7 @@ module.exports = {
   createSession,
   findOrCreateSession,
   normalizeValue,
+  normalizeThang,
+  formatThangBuoiLabel,
+  parseThang,
 };

@@ -81,7 +81,7 @@ export default function Layout({ children }) {
   );
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh', width: '100%', flex: 1, minWidth: 0 }}>
       <AppBar
         position="fixed"
         sx={{
@@ -154,9 +154,16 @@ export default function Layout({ children }) {
       <Box
         component="main"
         sx={{
-          flexGrow: 1,
+          flex: '1 1 0%',
+          minWidth: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'stretch',
+          alignSelf: 'stretch',
           p: 3,
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
+          width: { xs: '100%', sm: 'auto' },
+          maxWidth: '100%',
+          boxSizing: 'border-box',
           mt: 8,
           bgcolor: 'background.default',
         }}

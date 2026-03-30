@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
+import { compareThangBuoiLabel, formatThangBuoiLabel } from '../utils/formatThangBuoi';
 import {
   Dialog,
   DialogTitle,
@@ -186,13 +187,12 @@ export default function AttendanceImportDialog({ open, onClose, classes = [], on
           }
         });
       });
-      const sortedSessions = Array.from(uniqueSessions.values()).sort((a, b) => {
-        const [ya, ma] = a.thang.split('.').map(Number).reverse();
-        const [yb, mb] = b.thang.split('.').map(Number).reverse();
-        if (ya !== yb) return ya - yb;
-        if (ma !== mb) return ma - mb;
-        return a.buoi - b.buoi;
-      });
+      const sortedSessions = Array.from(uniqueSessions.values()).sort((a, b) =>
+        compareThangBuoiLabel(
+          formatThangBuoiLabel(a.thang, a.buoi) || '',
+          formatThangBuoiLabel(b.thang, b.buoi) || ''
+        )
+      );
       return sortedSessions.map((sess, idx) => ({
         colIndex: idx,
         thang: sess.thang,
@@ -299,7 +299,8 @@ export default function AttendanceImportDialog({ open, onClose, classes = [], on
                     const parts = [`Dòng ${e.rowIndex}`];
                     if (e.maHV) parts.push(e.maHV);
                     if (e.hoTen) parts.push(e.hoTen);
-                    if (e.thang != null && e.buoi != null) parts.push(`Tháng ${e.thang}, Buổi ${e.buoi}`);
+                    if (e.thang != null && e.buoi != null)
+                      parts.push(formatThangBuoiLabel(e.thang, e.buoi) || `${e.thang}-B${e.buoi}`);
                     const prefix = parts.join(' - ');
                     return (
                       <Typography key={idx} component="li" variant="body2" sx={{ mb: 0.5 }}>

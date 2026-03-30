@@ -26,7 +26,7 @@ db.prepare(
 
 const sess = db.prepare(
   'INSERT INTO sessions (classId, ngayHoc, startTime, thang, buoi, noiDungHoc, sourceType) VALUES (?, ?, ?, ?, ?, ?, ?)'
-).run(classId, new Date().toISOString().slice(0, 10), '19:00', '1.2026', 1, 'Buổi 1', 'manual');
+).run(classId, new Date().toISOString().slice(0, 10), '19:00', '2026.01', 1, 'Buổi 1', 'manual');
 
 console.log('[seed] Created course, class 9.1, 4 students, 3 schedule slots, 1 session');
 } else {
@@ -39,7 +39,7 @@ console.log('[seed] Created course, class 9.1, 4 students, 3 schedule slots, 1 s
       ).run(classRow.id, '19:00', 'Toán', classRow.id, '19:00', 'Văn', classRow.id, '19:00', 'Anh');
       db.prepare(
         'INSERT INTO sessions (classId, ngayHoc, startTime, thang, buoi, noiDungHoc, sourceType) VALUES (?, ?, ?, ?, ?, ?, ?)'
-      ).run(classRow.id, new Date().toISOString().slice(0, 10), '19:00', '1.2026', 1, 'Buổi 1', 'manual');
+      ).run(classRow.id, new Date().toISOString().slice(0, 10), '19:00', '2026.01', 1, 'Buổi 1', 'manual');
       console.log('[seed] Added schedule slots and 1 session');
     }
   }

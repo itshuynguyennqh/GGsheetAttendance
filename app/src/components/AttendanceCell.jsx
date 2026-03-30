@@ -1,7 +1,10 @@
 import React, { memo, useCallback } from 'react';
-import { Box, MenuItem, Select, TableCell, Tooltip } from '@mui/material';
-import { ArrowDropDown } from '@mui/icons-material';
+import { Box, TableCell } from '@mui/material';
 
+/**
+ * Native <select> thay MUI Select: kéo virtual nhanh tới cuối bảng không còn mount
+ * hàng trăm Select/Menu/Portal cùng lúc (nguyên nhân chính gây lag).
+ */
 function getValueBgColor(val) {
   const v = (val || '').toUpperCase();
   if (v === 'M' || v === 'B') return 'primary.light';
@@ -9,6 +12,31 @@ function getValueBgColor(val) {
   if (v === 'X') return 'success.light';
   return 'transparent';
 }
+
+const selectSx = {
+  width: '100%',
+  height: 36,
+  m: 0,
+  py: 0.5,
+  px: 0.5,
+  fontWeight: 600,
+  textAlign: 'center',
+  textAlignLast: 'center',
+  border: 'none',
+  borderRadius: 0,
+  backgroundColor: 'transparent',
+  cursor: 'pointer',
+  fontSize: '0.875rem',
+  fontFamily: 'inherit',
+  appearance: 'none',
+  WebkitAppearance: 'none',
+  MozAppearance: 'none',
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24'%3E%3Cpath fill='%23666' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E")`,
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'right 4px center',
+  paddingRight: '20px',
+  boxSizing: 'border-box',
+};
 
 const AttendanceCell = memo(
   ({
@@ -19,7 +47,6 @@ const AttendanceCell = memo(
     note,
     isSelected,
     isFocused,
-    isOpen,
     cellRefs,
     focusedCellRef,
     onValChange,
@@ -28,7 +55,6 @@ const AttendanceCell = memo(
     setFocusedCell,
     setSelectedCells,
     setOpenDropdowns,
-    getCellKey,
   }) => {
     const handleChange = useCallback(
       (e) => {
@@ -46,15 +72,18 @@ const AttendanceCell = memo(
 
     const handleKeyDown = useCallback(
       (e) => {
-        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && !isOpen) {
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
           e.preventDefault();
           e.stopPropagation();
           onKeyDown(e, studentId, sessionId);
           return;
         }
+        if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
+          setOpenDropdowns((prev) => new Set(prev).add(cellKey));
+        }
         onKeyDown(e, studentId, sessionId);
       },
-      [isOpen, onKeyDown, studentId, sessionId]
+      [onKeyDown, studentId, sessionId, cellKey, setOpenDropdowns]
     );
 
     const handleFocus = useCallback(
@@ -66,131 +95,62 @@ const AttendanceCell = memo(
       [cellKey, focusedCellRef, setFocusedCell, setSelectedCells]
     );
 
-    const handleOpen = useCallback(() => {
-      setFocusedCell(cellKey);
-      setSelectedCells(new Set([cellKey]));
-      setOpenDropdowns((prev) => new Set(prev).add(cellKey));
-    }, [cellKey, setFocusedCell, setSelectedCells, setOpenDropdowns]);
-
-    const handleClose = useCallback(() => {
-      setOpenDropdowns((prev) => {
-        const next = new Set(prev);
-        next.delete(cellKey);
-        return next;
-      });
-    }, [cellKey, setOpenDropdowns]);
-
-    const handleClick = useCallback(
-      (e) => {
-        const target = e.target;
-        const isIconClick =
-          target?.closest('.MuiSelect-icon') ||
-          target?.classList?.contains('MuiSelect-icon') ||
-          target?.closest('[class*="MuiSelect-icon"]') ||
-          target?.closest('[data-icon-click]');
-        if (!isIconClick) {
-          e.stopPropagation();
-          e.preventDefault();
-          if (!e.shiftKey) setSelectedCells(new Set([cellKey]));
-          setFocusedCell(cellKey);
-          if (isOpen) handleClose();
-        }
-      },
-      [cellKey, isOpen, setFocusedCell, setSelectedCells, handleClose]
-    );
-
-    const handleIconClick = useCallback(
-      (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        setFocusedCell(cellKey);
-        setSelectedCells(new Set([cellKey]));
-        if (!isOpen) handleOpen();
-      },
-      [cellKey, isOpen, setFocusedCell, setSelectedCells, handleOpen]
-    );
-
     return (
-      <Tooltip title={note || ''}>
-        <TableCell
-          align="center"
-          padding="none"
-          sx={{
-            position: 'relative',
-            bgcolor:
-              isSelected ? 'action.selected' : isFocused ? 'action.focus' : getValueBgColor(value),
-            '&:focus-within': { bgcolor: 'action.focus' },
+      <TableCell
+        align="center"
+        padding="none"
+        title={note || undefined}
+        sx={{
+          position: 'relative',
+          bgcolor:
+            isSelected ? 'action.selected' : isFocused ? 'action.focus' : getValueBgColor(value),
+          '&:focus-within': { bgcolor: 'action.focus' },
+          ...(isSelected && {
+            boxShadow: (t) => `inset 0 0 0 2px ${t.palette.primary.main}`,
+          }),
+        }}
+        onClick={(e) => onCellClick(e, studentId, sessionId)}
+      >
+        <Box
+          component="select"
+          ref={(el) => {
+            if (el) cellRefs.current[cellKey] = el;
+            else delete cellRefs.current[cellKey];
           }}
-          onClick={(e) => onCellClick(e, studentId, sessionId)}
+          value={value || ''}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          onFocus={handleFocus}
+          onMouseDown={(e) => {
+            if (e.shiftKey) e.preventDefault();
+          }}
+          data-cell-key={cellKey}
+          aria-label="Điểm danh"
+          sx={{
+            ...selectSx,
+            color: 'text.primary',
+            '&:focus': { outline: 'none' },
+          }}
         >
-          <Select
-            ref={(el) => {
-              if (el) cellRefs.current[cellKey] = el;
-              else delete cellRefs.current[cellKey];
-            }}
-            value={value || ''}
-            open={isOpen}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            onFocus={handleFocus}
-            onOpen={handleOpen}
-            onClose={handleClose}
-            onClick={handleClick}
-            IconComponent={(props) => (
-              <Box
-                component="span"
-                data-icon-click="true"
-                onClick={handleIconClick}
-                onMouseDown={handleIconClick}
-                sx={{ cursor: 'pointer', pointerEvents: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                <ArrowDropDown {...props} />
-              </Box>
-            )}
-            size="small"
-            data-cell-key={cellKey}
-            sx={{
-              width: '100%',
-              fontWeight: 600,
-              '& .MuiSelect-select': { py: 0.5, px: 1, minHeight: 'auto', textAlign: 'center', cursor: 'default' },
-              '& .MuiSelect-icon': { cursor: 'pointer', pointerEvents: 'auto !important', zIndex: 1 },
-              '& .MuiOutlinedInput-notchedOutline': {
-                border: isSelected ? '2px solid' : 'none',
-                borderColor: isSelected ? 'primary.main' : 'transparent',
-              },
-            }}
-            MenuProps={{
-              PaperProps: { sx: { maxHeight: 200 } },
-              onKeyDown: (e) => {
-                if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
-                  e.stopPropagation();
-                  handleClose();
-                  onKeyDown(e, studentId, sessionId);
-                }
-              },
-            }}
-          >
-            <MenuItem value="">—</MenuItem>
-            <MenuItem value="X">X - Có mặt</MenuItem>
-            <MenuItem value="B">B - Bù</MenuItem>
-            <MenuItem value="M">M - Nghỉ phép</MenuItem>
-            <MenuItem value="P">P - Nghỉ</MenuItem>
-          </Select>
-          {note && (
-            <Box component="span" sx={{ position: 'absolute', top: 2, right: 2, fontSize: '0.7rem' }}>
-              📝
-            </Box>
-          )}
-        </TableCell>
-      </Tooltip>
+          <option value="">—</option>
+          <option value="X">X - Có mặt</option>
+          <option value="B">B - Bù</option>
+          <option value="M">M - Nghỉ phép</option>
+          <option value="P">P - Nghỉ</option>
+        </Box>
+        {note ? (
+          <Box component="span" sx={{ position: 'absolute', top: 2, right: 2, fontSize: '0.65rem', pointerEvents: 'none' }}>
+            📝
+          </Box>
+        ) : null}
+      </TableCell>
     );
   },
   (prev, next) =>
     prev.value === next.value &&
     prev.note === next.note &&
     prev.isSelected === next.isSelected &&
-    prev.isFocused === next.isFocused &&
-    prev.isOpen === next.isOpen
+    prev.isFocused === next.isFocused
 );
 
 AttendanceCell.displayName = 'AttendanceCell';

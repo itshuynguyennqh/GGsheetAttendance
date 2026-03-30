@@ -58,7 +58,7 @@ function runSchema(db) {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
-    -- Ca học (Tháng, Buổi, Nội dung học)
+    -- Ca học: thang = YYYY.MM, buoi = số buổi trong tháng
     CREATE TABLE IF NOT EXISTS sessions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       class_id INTEGER NOT NULL REFERENCES classes(id),
@@ -129,6 +129,22 @@ function runSchema(db) {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+    -- Sơ đồ chỗ ngồi theo từng ca học
+    CREATE TABLE IF NOT EXISTS session_seat_map (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL REFERENCES sessions(id),
+      seat_row INTEGER NOT NULL,
+      seat_col INTEGER NOT NULL,
+      student_id INTEGER REFERENCES students(id),
+      seat_label TEXT,
+      meta TEXT,
+      last_edit_at TEXT,
+      last_edit_by TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(session_id, seat_row, seat_col),
+      UNIQUE(session_id, student_id)
+    );
+
     -- Azota cache: lớp (classroom)
     CREATE TABLE IF NOT EXISTS azota_classroom_cache (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -172,6 +188,8 @@ function runSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_attendance_session ON attendance(session_id);
     CREATE INDEX IF NOT EXISTS idx_attendance_ngay ON attendance(ngay_diem_danh);
     CREATE INDEX IF NOT EXISTS idx_sessions_ngay ON sessions(ngay_hoc);
+    CREATE INDEX IF NOT EXISTS idx_session_seat_map_session ON session_seat_map(session_id);
+    CREATE INDEX IF NOT EXISTS idx_session_seat_map_student ON session_seat_map(student_id);
   `);
 }
 

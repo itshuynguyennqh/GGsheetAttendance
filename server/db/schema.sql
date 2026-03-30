@@ -146,6 +146,22 @@ CREATE TABLE IF NOT EXISTS session_report_student (
   UNIQUE(sessionId, studentId)
 );
 
+-- Session seat map (sơ đồ chỗ ngồi theo ca học)
+CREATE TABLE IF NOT EXISTS session_seat_map (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sessionId INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  seatRow INTEGER NOT NULL,
+  seatCol INTEGER NOT NULL,
+  studentId INTEGER REFERENCES students(id) ON DELETE SET NULL,
+  seatLabel TEXT,
+  meta TEXT,
+  createdAt TEXT DEFAULT (datetime('now')),
+  lastEditAt TEXT,
+  lastEditBy TEXT,
+  UNIQUE(sessionId, seatRow, seatCol),
+  UNIQUE(sessionId, studentId)
+);
+
 -- Azota cache tables
 CREATE TABLE IF NOT EXISTS azota_classroom_cache (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -179,3 +195,5 @@ CREATE INDEX IF NOT EXISTS idx_sessions_classId ON sessions(classId);
 CREATE INDEX IF NOT EXISTS idx_sessions_ngayHoc ON sessions(ngayHoc);
 CREATE INDEX IF NOT EXISTS idx_attendance_studentId ON attendance(studentId);
 CREATE INDEX IF NOT EXISTS idx_attendance_sessionId ON attendance(sessionId);
+CREATE INDEX IF NOT EXISTS idx_session_seat_map_sessionId ON session_seat_map(sessionId);
+CREATE INDEX IF NOT EXISTS idx_session_seat_map_studentId ON session_seat_map(studentId);

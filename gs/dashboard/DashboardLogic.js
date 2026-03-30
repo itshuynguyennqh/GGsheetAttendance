@@ -149,7 +149,9 @@ function _getStreakDataLongFormat(data, monthFilter, buoiFilter) {
 
   const parseThang = t => {
     const p = String(t || "").trim().split(/[.\/]/);
-    return { month: parseInt(p[0], 10) || 0, year: parseInt(p[1], 10) || 0 };
+    const a = parseInt(p[0], 10) || 0, b = parseInt(p[1], 10) || 0;
+    if (a >= 1000) return { year: a, month: b };
+    return { month: a, year: b };
   };
   const cmp = (a, b) => {
     const pa = parseThang(a.thang), pb = parseThang(b.thang);

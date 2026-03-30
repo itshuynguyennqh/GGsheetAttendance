@@ -1,7 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const { db, setLastEdit, logTiming } = require('../db');
-const { findStudent, findOrCreateSession, normalizeValue } = require('./attendanceImportHelpers');
+const {
+  findStudent,
+  findOrCreateSession,
+  normalizeValue,
+  normalizeThang,
+  formatThangBuoiLabel,
+} = require('./attendanceImportHelpers');
 
 /** Get max lastEditAt timestamp for cache validation (classId/ngayHocLte optional) */
 function getMaxTimestamp(classId, ngayHocLte) {
@@ -56,7 +62,7 @@ function toYMD(d) {
 
 router.get('/', (req, res) => {
   try {
-    const { sessionId, classId, thang, buoi, ngayHocLte, ngayHocGte, page, pageSize, includeTimestamp } = req.query;
+    const { sessionId, classId, thang, buoi, ngayHocLte, ngayHocGte, page, pageSize, allGroups, includeTimestamp } = req.query;
     let sessions = [];
     let students = [];
     let totalGroups = null;
@@ -73,6 +79,7 @@ router.get('/', (req, res) => {
       const pg = Math.max(1, parseInt(page, 10) || 1);
       const ps = Math.min(50, Math.max(1, parseInt(pageSize, 10) || 12));
       const offset = (pg - 1) * ps;
+      const loadAllGroups = allGroups === '1';
       stepMs = {};
 
       let baseSql = 'SELECT * FROM sessions WHERE classId = ? AND enableAttendance = 1';
@@ -94,7 +101,7 @@ router.get('/', (req, res) => {
       }
       if (thang) {
         baseSql += ' AND thang = ?';
-        baseParams.push(thang);
+        baseParams.push(normalizeThang(thang) || thang);
       }
       if (buoi) {
         baseSql += ' AND buoi = ?';
@@ -106,11 +113,13 @@ router.get('/', (req, res) => {
       const groupSQL = `
         SELECT thang, buoi, MIN(ngayHoc) as min_ngay FROM sessions WHERE ${where}
         GROUP BY thang, buoi ORDER BY min_ngay
-        LIMIT ? OFFSET ?
+        ${loadAllGroups ? '' : 'LIMIT ? OFFSET ?'}
       `;
       let groups;
       try {
-        groups = db.prepare(groupSQL).all(...baseParams, ps, offset);
+        groups = loadAllGroups
+          ? db.prepare(groupSQL).all(...baseParams)
+          : db.prepare(groupSQL).all(...baseParams, ps, offset);
       } catch (e) {
         throw new Error(`[step:groups] ${e.message}`);
       }
@@ -228,18 +237,27 @@ router.put('/', (req, res) => {
       const { studentId, sessionId, ngayDiemDanh, value, note } = it;
       if (!studentId || !sessionId) continue;
 
+      /** Ghi đè value/note (kể cả NULL) — tránh COALESCE(?, value) khiến xóa ô không có tác dụng */
+      let val = null;
+      if (value != null && String(value).trim() !== '') {
+        const n = normalizeValue(value);
+        val = n && n !== '' ? n : null;
+      }
+      const noteVal = note == null || String(note).trim() === '' ? null : String(note);
+
       const existing = db.prepare(
         'SELECT id FROM attendance WHERE studentId = ? AND sessionId = ?'
       ).get(studentId, sessionId);
 
       if (existing) {
         db.prepare(
-          'UPDATE attendance SET ngayDiemDanh = COALESCE(?, ngayDiemDanh), value = COALESCE(?, value), note = COALESCE(?, note), lastEditAt = ?, lastEditBy = ? WHERE id = ?'
-        ).run(ngayDiemDanh ?? null, value ?? null, note ?? null, now, by, existing.id);
+          'UPDATE attendance SET ngayDiemDanh = COALESCE(?, ngayDiemDanh), value = ?, note = ?, lastEditAt = ?, lastEditBy = ? WHERE id = ?'
+        ).run(ngayDiemDanh ?? null, val, noteVal, now, by, existing.id);
       } else {
+        if (val == null && !noteVal) continue;
         db.prepare(
           'INSERT INTO attendance (studentId, sessionId, ngayDiemDanh, value, note, lastEditAt, lastEditBy) VALUES (?, ?, ?, ?, ?, ?, ?)'
-        ).run(studentId, sessionId, ngayDiemDanh || null, value || null, note || null, now, by);
+        ).run(studentId, sessionId, ngayDiemDanh || null, val, noteVal, now, by);
       }
     }
 
@@ -293,7 +311,7 @@ router.post('/validate-import', (req, res) => {
           if (createSessionsIfNotExists) {
             rowWarnings.push(`Session chưa có (sẽ tạo khi import): ${thang}-B${buoi}`);
           } else {
-            rowErrors.push(`Session không tồn tại: ${thang}-B${buoi}`);
+            rowErrors.push(`Session không tồn tại: ${formatThangBuoiLabel(thang, buoi)}`);
             errorRecords++;
           }
         }
@@ -306,7 +324,7 @@ router.post('/validate-import', (req, res) => {
           totalRecords++;
           if (existingAttendance) {
             if (updateExisting) updateRecords++;
-            else rowWarnings.push(`Đã có điểm danh (sẽ update): ${thang}-B${buoi}`);
+            else rowWarnings.push(`Đã có điểm danh (sẽ update): ${formatThangBuoiLabel(thang, buoi)}`);
           } else newRecords++;
         }
 

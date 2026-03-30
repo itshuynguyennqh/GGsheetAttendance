@@ -44,10 +44,10 @@
 
   function parseThangForSort(thang) {
     if (!thang || typeof thang !== 'string') return { year: 0, month: 0 };
-    var parts = thang.trim().split('.');
-    var month = parseInt(parts[0], 10) || 0;
-    var year = parseInt(parts[1], 10) || 0;
-    return { year: year, month: month };
+    var parts = thang.trim().split(/[.\/]/);
+    var a = parseInt(parts[0], 10) || 0, b = parseInt(parts[1], 10) || 0;
+    if (a >= 1000) return { year: a, month: b };
+    return { year: b, month: a };
   }
 
   /**
@@ -217,10 +217,14 @@
   }
 
   function formatBuoiLabel(entry) {
-    if (!entry) return '';
-    var label = entry.thang ? 'Tháng ' + entry.thang.replace('.', '/') : '';
-    if (entry.buoi != null) label += (label ? ' ' : '') + 'Buổi ' + entry.buoi;
-    return label.trim() || 'N/A';
+    if (!entry || entry.buoi == null) return '';
+    var p = parseThangForSort(entry.thang);
+    if (p.year && p.month >= 1 && p.month <= 12) {
+      var mo = ('0' + p.month).slice(-2);
+      var bb = ('0' + parseInt(entry.buoi, 10)).slice(-2);
+      return p.year + '.' + mo + '-B' + bb;
+    }
+    return (entry.thang || '') + '-B' + entry.buoi;
   }
 
   /**

@@ -99,12 +99,22 @@
   function parseThangForSort(thang) {
     if (!thang || typeof thang !== 'string') return { year: 0, month: 0 };
     var parts = String(thang).trim().split(/[.\/]/);
-    var month = parseInt(parts[0], 10) || 0;
-    var year = parseInt(parts[1], 10) || 0;
-    return { year: year, month: month };
+    var a = parseInt(parts[0], 10) || 0, b = parseInt(parts[1], 10) || 0;
+    if (a >= 1000) return { year: a, month: b };
+    return { year: b, month: a };
   }
   function toKey(thang, buoi) {
     return (thang || '') + '_' + (buoi != null ? buoi : '');
+  }
+  function formatBuoiLabel(e) {
+    if (!e || e.buoi == null) return '';
+    var p = parseThangForSort(e.thang);
+    if (p.year && p.month >= 1 && p.month <= 12) {
+      var mo = ('0' + p.month).slice(-2);
+      var bb = ('0' + parseInt(e.buoi, 10)).slice(-2);
+      return p.year + '.' + mo + '-B' + bb;
+    }
+    return (e.thang || '') + '-B' + e.buoi;
   }
 
   function getStreakDataFromLongFormat(data, filterOptions) {
@@ -137,7 +147,7 @@
       return (a.buoi || 0) - (b.buoi || 0);
     });
     var timelineBuois = uniqueList.map(function(e, idx) {
-      return { index: idx + 1, key: e.key, thang: e.thang, buoi: e.buoi, label: 'Tháng ' + e.thang.replace('.', '/') + ' Buổi ' + e.buoi };
+      return { index: idx + 1, key: e.key, thang: e.thang, buoi: e.buoi, label: formatBuoiLabel(e) };
     });
 
     var startIdx = filterOptions && filterOptions.startBuoiIndex != null ? parseInt(filterOptions.startBuoiIndex, 10) : 1;
@@ -237,7 +247,7 @@
       }
     } else {
       timelineBuois = uniqueList.map(function(e, idx) {
-        return { index: idx + 1, key: e.key, thang: e.thang, buoi: e.buoi, label: 'Tháng ' + e.thang.replace('.', '/') + ' Buổi ' + e.buoi };
+        return { index: idx + 1, key: e.key, thang: e.thang, buoi: e.buoi, label: formatBuoiLabel(e) };
       });
     }
 

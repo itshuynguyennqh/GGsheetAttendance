@@ -255,6 +255,10 @@ export const sessionsApi = {
     return out;
   },
   get: (id) => request(`/sessions/${id}`),
+  getSeatMap: (id) => request(`/sessions/${id}/seat-map`),
+  saveSeatMap: (id, body) => request(`/sessions/${id}/seat-map`, { method: 'PUT', body: JSON.stringify(body) }),
+  saveStudentReports: (id, body) => request(`/sessions/${id}/student-reports`, { method: 'PUT', body: JSON.stringify(body) }),
+  patchStudentReport: (id, studentId, body) => request(`/sessions/${id}/student-reports/${studentId}`, { method: 'PATCH', body: JSON.stringify(body) }),
   create: (body) => request('/sessions', { method: 'POST', body: JSON.stringify(body) }),
   update: (id, body) => request(`/sessions/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   delete: (id) => request(`/sessions/${id}`, { method: 'DELETE' }),

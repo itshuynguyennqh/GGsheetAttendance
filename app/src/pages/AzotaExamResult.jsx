@@ -43,16 +43,21 @@ function scoreBg(score) {
   return 'error.lighter';
 }
 
-function DraggableName({ id, data, children }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id, data });
+function DraggableName({ id, data, children, disabled = false }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id,
+    data,
+    disabled,
+  });
   const style = {
     transform: CSS.Translate.toString(transform),
     opacity: isDragging ? 0.4 : 1,
-    cursor: 'grab',
+    cursor: disabled ? 'default' : 'grab',
     touchAction: 'none',
+    display: 'inline-block',
   };
   return (
-    <span ref={setNodeRef} style={style} {...listeners} {...attributes}>
+    <span ref={setNodeRef} style={style} {...(disabled ? {} : listeners)} {...attributes}>
       {children}
     </span>
   );
@@ -127,6 +132,7 @@ export default function AzotaExamResult() {
   const [savingRowIndex, setSavingRowIndex] = useState(null);
   const [saveSampleError, setSaveSampleError] = useState('');
   const [localResults, setLocalResults] = useState(null);
+  const [extraUnmatched, setExtraUnmatched] = useState([]);
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
 
@@ -266,15 +272,17 @@ export default function AzotaExamResult() {
   const unmatchedStudents = useMemo(() => {
     const assignedNames = new Set(rows.filter((r) => r.studentName).map((r) => r.studentName));
     if (classStudents.length > 0) {
-      return classStudents.filter((s) => !rows.some((r) => r.studentId === s.id));
+      const base = classStudents.filter((s) => !rows.some((r) => r.studentId === s.id));
+      const extras = (extraUnmatched || []).filter((s) => !assignedNames.has(s.hoTen));
+      return [...extras, ...base];
     }
     if (allStudentNames.length > 0) {
       return allStudentNames
         .map((name, idx) => ({ id: `name-${idx}`, hoTen: name }))
         .filter((s) => !assignedNames.has(s.hoTen));
     }
-    return [];
-  }, [rows, classStudents, allStudentNames]);
+    return (extraUnmatched || []).filter((s) => !assignedNames.has(s.hoTen));
+  }, [rows, classStudents, allStudentNames, extraUnmatched]);
 
   const [activeDrag, setActiveDrag] = useState(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -290,6 +298,15 @@ export default function AzotaExamResult() {
     const src = active.data.current;
     const dst = over.data.current;
 
+    const isRowEmpty = (r) => !(r?.studentId || r?.studentName);
+    const findFirstEmptyRowIndex = (arr, exclude = new Set()) => {
+      for (let i = 0; i < arr.length; i++) {
+        if (exclude.has(i)) continue;
+        if (isRowEmpty(arr[i])) return i;
+      }
+      return -1;
+    };
+
     if (dst?.type === 'sidebar') {
       if (src.type === 'row' && src.rowIndex != null) {
         setLocalResults((prev) => {
@@ -297,17 +314,39 @@ export default function AzotaExamResult() {
           return prev.map((r, i) => (i === src.rowIndex ? { ...r, studentId: null, studentName: '' } : r));
         });
       }
+      if (src.type === 'unmatched' && typeof src.id === 'string' && src.id.startsWith('extra-')) {
+        setExtraUnmatched((prev) => (prev || []).filter((x) => x.id !== src.id));
+      }
       return;
     }
 
     if (dst?.type === 'cell' && dst.rowIndex != null) {
       const targetIdx = dst.rowIndex;
       if (src.type === 'unmatched') {
+        if (typeof src.id === 'string' && src.id.startsWith('extra-')) {
+          setExtraUnmatched((prev) => (prev || []).filter((x) => x.id !== src.id));
+        }
         setLocalResults((prev) => {
           if (!prev?.length) return prev;
+          const dstRow = prev[targetIdx];
+          const displaced =
+            dstRow?.studentId || dstRow?.studentName
+              ? { studentId: dstRow.studentId ?? null, studentName: dstRow.studentName ?? '' }
+              : null;
+          const emptyIdx =
+            displaced != null
+              ? findFirstEmptyRowIndex(prev, new Set([targetIdx]))
+              : -1;
+          if (displaced != null && emptyIdx < 0 && !displaced.studentId && displaced.studentName) {
+            const extraId = `extra-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            setExtraUnmatched((prevExtra) => [{ id: extraId, hoTen: displaced.studentName }, ...(prevExtra || [])]);
+          }
           return prev.map((r, i) => {
-            if (i !== targetIdx) return r;
-            return { ...r, studentId: src.id, studentName: src.hoTen };
+            if (i === targetIdx) return { ...r, studentId: src.id, studentName: src.hoTen };
+            if (displaced != null && emptyIdx >= 0 && i === emptyIdx) {
+              return { ...r, studentId: displaced.studentId, studentName: displaced.studentName };
+            }
+            return r;
           });
         });
       } else if (src.type === 'row' && src.rowIndex !== targetIdx) {
@@ -315,9 +354,26 @@ export default function AzotaExamResult() {
           if (!prev?.length) return prev;
           const srcRow = prev[src.rowIndex];
           const dstRow = prev[targetIdx];
+          const srcId = srcRow.studentId ?? srcRow.studentName ?? null;
+          const srcName = srcRow.studentName ?? '';
+          const displaced =
+            dstRow?.studentId || dstRow?.studentName
+              ? { studentId: dstRow.studentId ?? null, studentName: dstRow.studentName ?? '' }
+              : null;
+          const emptyIdx =
+            displaced != null
+              ? findFirstEmptyRowIndex(prev, new Set([targetIdx, src.rowIndex]))
+              : -1;
+          if (displaced != null && emptyIdx < 0 && !displaced.studentId && displaced.studentName) {
+            const extraId = `extra-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            setExtraUnmatched((prevExtra) => [{ id: extraId, hoTen: displaced.studentName }, ...(prevExtra || [])]);
+          }
           return prev.map((r, i) => {
-            if (i === targetIdx) return { ...r, studentId: srcRow.studentId || srcRow.studentName, studentName: srcRow.studentName };
-            if (i === src.rowIndex) return { ...r, studentId: dstRow.studentId || dstRow.studentName, studentName: dstRow.studentName };
+            if (i === targetIdx) return { ...r, studentId: srcId, studentName: srcName };
+            if (i === src.rowIndex) return { ...r, studentId: null, studentName: '' };
+            if (displaced != null && emptyIdx >= 0 && i === emptyIdx) {
+              return { ...r, studentId: displaced.studentId, studentName: displaced.studentName };
+            }
             return r;
           });
         });
@@ -639,13 +695,14 @@ cd python/vlm-service && set VLM_ENGINE=gemini && set GEMINI_API_KEY=your-key &&
                               <DraggableName
                                 id={`row-${origIdx}`}
                                 data={{ type: 'row', rowIndex: origIdx, studentId: row.studentId || row.studentName, studentName: row.studentName }}
+                                disabled={false}
                               >
                                 <Chip
-                                  label={row.studentName}
+                                  label={row.studentName ?? ''}
                                   size="small"
                                   color={row.matchFallback ? 'warning' : 'primary'}
                                   variant={row.matchFallback ? 'outlined' : 'filled'}
-                                  sx={{ cursor: 'grab', '&:active': { cursor: 'grabbing' } }}
+                                  sx={{ pointerEvents: 'none', cursor: 'grab', '&:active': { cursor: 'grabbing' } }}
                                 />
                               </DraggableName>
                             ) : (

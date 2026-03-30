@@ -16,6 +16,7 @@ import {
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import { formatThangBuoiLabel } from '../utils/formatThangBuoi';
 
 const statusConfig = {
   valid: { label: 'Hợp lệ', color: 'success', Icon: CheckCircleOutlineIcon },
@@ -45,13 +46,14 @@ function cellBg(value) {
   return 'grey.100';
 }
 
-/** Trả về [year, month] để so sánh; "__other__" → [9999, 99] để đẩy xuống cuối. */
+/** [year, month] — hỗ trợ YYYY.MM và MM.YYYY */
 function thangSortKey(thang) {
   if (!thang || thang === '__other__') return [9999, 99];
-  const parts = String(thang).trim().split('.');
-  const month = parseInt(parts[0], 10) || 0;
-  const year = parseInt(parts[1], 10) || 0;
-  return [year, month];
+  const parts = String(thang).trim().split(/[.\/]/);
+  const a = parseInt(parts[0], 10) || 0;
+  const b = parseInt(parts[1], 10) || 0;
+  if (a >= 1000) return [a, b];
+  return [b, a];
 }
 
 export default function AttendanceImportPreview({
@@ -99,7 +101,7 @@ export default function AttendanceImportPreview({
     return out;
   }, [attendanceCols, data]);
 
-  // Sắp xếp cột theo tháng (M.YYYY) rồi nhóm liên tiếp → tháng không bị tách, đúng thứ tự.
+  // Sắp xếp cột theo tháng (YYYY.MM) rồi nhóm liên tiếp
   const { monthGroups, sortedColumnIndices } = React.useMemo(() => {
     const indices = Array.from({ length: attendanceCols.length }, (_, i) => i);
     indices.sort((a, b) => {
@@ -117,7 +119,13 @@ export default function AttendanceImportPreview({
         lastKey = key;
         groups.push({
           thang: key === '__other__' ? '' : key,
-          label: key === '__other__' ? 'Buổi' : `Tháng ${key}`,
+          label:
+            key === '__other__'
+              ? 'Buổi'
+              : (() => {
+                  const [y, m] = thangSortKey(key);
+                  return y < 9000 ? `${y}.${String(m).padStart(2, '0')}` : key;
+                })(),
           cols: [],
         });
       }
@@ -126,11 +134,12 @@ export default function AttendanceImportPreview({
     return { monthGroups: groups, sortedColumnIndices: indices };
   }, [attendanceCols, thangByIndex]);
 
-  const getBuoiLabel = (col, i) => {
-    if (col.buoi != null) return `B${col.buoi}`;
-    const rec = data[0]?.records?.[i];
-    if (rec?.buoi != null) return `B${rec.buoi}`;
-    return `B${i + 1}`;
+  const getBuoiLabel = (col, i, thangStr) => {
+    const buoi = col.buoi != null ? col.buoi : data[0]?.records?.[i]?.buoi ?? i + 1;
+    const [y, mo] = thangSortKey(thangStr || '__other__');
+    if (y < 9000 && mo >= 1 && mo <= 12)
+      return `${y}.${String(mo).padStart(2, '0')}-B${String(Number(buoi)).padStart(2, '0')}`;
+    return `B${buoi}`;
   };
 
   // Map từ origIdx → vị trí trong nhóm tháng (để đếm lại từ 1 cho mỗi tháng)
@@ -203,7 +212,6 @@ export default function AttendanceImportPreview({
           <TableRow sx={{ bgcolor: 'primary.light' }}>
             {sortedColumnIndices.map((origIdx, displayPos) => {
               const col = attendanceCols[origIdx];
-              const buoiInMonth = buoiInMonthByIndex.get(origIdx) ?? displayPos + 1;
               const isFirstInGroup = firstColsInGroup.has(origIdx);
               const isLastInGroup = lastColsInGroup.has(origIdx);
               const isFirstCol = displayPos === 0;
@@ -219,7 +227,7 @@ export default function AttendanceImportPreview({
                     borderColor: 'divider',
                   }}
                 >
-                  B{buoiInMonth}
+                  {getBuoiLabel(col, origIdx, thangByIndex[origIdx])}
                 </TableCell>
               );
             })}
@@ -277,7 +285,15 @@ export default function AttendanceImportPreview({
                 }
                 return (
                   <TableCell key={origIdx} align="center" sx={{ bgcolor: cellBg(rec?.value), minWidth: 48 }}>
-                    <Tooltip title={rec?.session ? `Ngày học: ${rec.session.ngayHoc}` : rec?.thang ? `${rec.thang}-B${rec.buoi}` : ''}>
+                    <Tooltip
+                      title={
+                        rec?.session
+                          ? `Ngày học: ${rec.session.ngayHoc}`
+                          : rec?.thang != null && rec?.buoi != null
+                            ? formatThangBuoiLabel(rec.thang, rec.buoi) || ''
+                            : ''
+                      }
+                    >
                       <Box component="span" sx={{ fontWeight: 600 }}>{rec?.value ?? '—'}</Box>
                     </Tooltip>
                   </TableCell>

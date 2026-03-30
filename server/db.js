@@ -172,6 +172,22 @@ function initSchema() {
       UNIQUE(sessionId, studentId)
     );
 
+    -- Sơ đồ chỗ ngồi theo ca học (7x4 = 28 ghế)
+    CREATE TABLE IF NOT EXISTS session_seat_map (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sessionId INTEGER NOT NULL REFERENCES sessions(id),
+      seatRow INTEGER NOT NULL,
+      seatCol INTEGER NOT NULL,
+      studentId INTEGER REFERENCES students(id),
+      seatLabel TEXT,
+      meta TEXT,
+      createdAt TEXT DEFAULT (datetime('now')),
+      lastEditAt TEXT,
+      lastEditBy TEXT,
+      UNIQUE(sessionId, seatRow, seatCol),
+      UNIQUE(sessionId, studentId)
+    );
+
     -- Cache Azota
     CREATE TABLE IF NOT EXISTS azota_classroom_cache (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -245,8 +261,30 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_attendance_session ON attendance(sessionId);
     CREATE INDEX IF NOT EXISTS idx_attendance_lastEditAt ON attendance(lastEditAt);
     CREATE INDEX IF NOT EXISTS idx_sessions_lastEditAt ON sessions(lastEditAt);
+    CREATE INDEX IF NOT EXISTS idx_session_seat_map_session ON session_seat_map(sessionId);
+    CREATE INDEX IF NOT EXISTS idx_session_seat_map_student ON session_seat_map(studentId);
   `);
+  migrateSessionsThangYYYYMM();
   console.log('[db] Schema initialized');
+}
+
+/** Chuẩn hóa sessions.thang → YYYY.MM (và đổi bản ghi cũ MM.YYYY) */
+function migrateSessionsThangYYYYMM() {
+  try {
+    const { normalizeThang } = require('./routes/attendanceImportHelpers');
+    const rows = db.prepare("SELECT id, thang FROM sessions WHERE thang IS NOT NULL AND thang != ''").all();
+    let updated = 0;
+    for (const r of rows) {
+      const norm = normalizeThang(r.thang);
+      if (norm && norm !== r.thang) {
+        db.prepare('UPDATE sessions SET thang = ? WHERE id = ?').run(norm, r.id);
+        updated++;
+      }
+    }
+    if (updated) console.log('[db] sessions.thang → YYYY.MM:', updated, 'rows');
+  } catch (e) {
+    console.warn('[db] migrateSessionsThangYYYYMM:', e.message);
+  }
 }
 
 function setLastEdit(table, id, by = 'user') {

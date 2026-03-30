@@ -43,8 +43,10 @@ function getAllowedLinkIdsFromDanhSachBai(btvnRange, externalSS) {
   }
   var idxFormat = mapping.format !== undefined ? mapping.format : 7;
   var idxLinkBai = mapping.linkBai !== undefined ? mapping.linkBai : 8;
-  var startFormat = "T" + ("0" + btvnRange.thangStart).slice(-2) + "." + btvnRange.namStart + "-B" + btvnRange.buoiStart;
-  var endFormat = "T" + ("0" + btvnRange.thangEnd).slice(-2) + "." + btvnRange.namEnd + "-B" + btvnRange.buoiEnd;
+  var startFormat =
+    btvnRange.namStart + "." + ("0" + btvnRange.thangStart).slice(-2) + "-B" + btvnRange.buoiStart;
+  var endFormat =
+    btvnRange.namEnd + "." + ("0" + btvnRange.thangEnd).slice(-2) + "-B" + btvnRange.buoiEnd;
   if (typeof compareFormat !== "function") {
     Logger.log("[BTVN Azota] compareFormat không tồn tại, bỏ qua filter link");
     return null;

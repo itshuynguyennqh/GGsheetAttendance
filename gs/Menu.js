@@ -38,16 +38,21 @@ function onOpen() {
     ui.createMenu("📅 Báo cáo Buổi")
       .addItem("📥 1. Kéo điểm danh sang BaoCao", "showAttendanceExportDialog")
       .addItem("📝 2. Kéo nhận xét Azota", "processBTVNAzota")
-      .addItem("📊 2a. Kéo điểm Azota → xác minh rồi ghi", "pullAzotaExamResult")
-      .addItem("⚡ 2a nhanh. Ghi thẳng (không xem trước)", "pullAzotaExamResultDirect")
-      .addItem("🔑 2A. Giống 2a (dialog xác minh)", "pullAzotaExamResultWithDialog")
+      .addItem("📊 3. Kéo điểm Azota → xác minh rồi ghi", "pullAzotaExamResult")
       .addSeparator()
-      .addItem("🤖 3. AI Tạo Đáp Án & Báo Cáo", "showAiInputDialog")
-      .addSeparator()
-      .addItem("🔑 Cập nhật Gemini API Key", "updateGeminiApiKey")
-      .addItem("🧠 Đổi model Gemini (OCR / AI)", "updateGeminiModel")
-      .addItem("ℹ️ Xem model Gemini đang dùng", "showGeminiModelInfo")
+      .addSubMenu(
+        ui
+          .createMenu("⚙️ Gemini (API · Model · Thông tin)")
+          .addItem("🔑 Cập nhật API Key", "updateGeminiApiKey")
+          .addItem("🧠 Đổi model (OCR / AI)", "updateGeminiModel")
+          .addItem("ℹ️ Xem model đang dùng", "showGeminiModelInfo")
+      )
       .addToUi();
+
+    ui.createMenu("🧪 Test")
+      .addItem("Đọc nội dung Google Doc (BVN)", "testReadBVNDoc")
+      .addToUi();
+
     Logger.log("onOpen: Menu đã thêm xong");
 
     var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();

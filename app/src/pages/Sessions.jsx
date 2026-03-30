@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -19,16 +19,18 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableSortLabel,
   TextField,
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-import AssignmentIcon from '@mui/icons-material/Assignment';
-import { Link } from 'react-router-dom';
+import { NavigateBefore, NavigateNext } from '@mui/icons-material';
 import { classesApi, sessionsApi } from '../api';
 import ConfirmDialog from '../components/ConfirmDialog';
+import SeatMapAttendanceDialog from '../components/SeatMapAttendanceDialog';
+import { formatThangBuoiLabel as labelThangBuoi } from '../utils/formatThangBuoi';
 
 export default function Sessions() {
   const [list, setList] = useState([]);
@@ -38,21 +40,87 @@ export default function Sessions() {
   const [editId, setEditId] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, id: null });
   const [form, setForm] = useState({ classId: '', ngayHoc: '', startTime: '19:00', noiDungHoc: '', enableAttendance: true });
+  const [sortCol, setSortCol] = useState('ngayHoc');
+  const [sortDir, setSortDir] = useState('desc');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [total, setTotal] = useState(0);
+  const [seatMapOpen, setSeatMapOpen] = useState(false);
+  const [seatMapSessionId, setSeatMapSessionId] = useState(null);
+
+  const handleSort = (col) => {
+    if (sortCol === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSortCol(col);
+      setSortDir(col === 'ngayHoc' || col === 'lastEditAt' || col === 'id' ? 'desc' : 'asc');
+    }
+  };
+
+  const sortedList = useMemo(() => {
+    const rows = [...list];
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const get = (row) => {
+      switch (sortCol) {
+        case 'id':
+          return Number(row.id) || 0;
+        case 'className':
+          return String(row.className || '').toLowerCase();
+        case 'ngayHoc':
+          return row.ngayHoc ? new Date(row.ngayHoc).getTime() : 0;
+        case 'startTime':
+          return String(row.startTime || '');
+        case 'thangBuoi':
+          return labelThangBuoi(row.thang, row.buoi) || '';
+        case 'noiDungHoc':
+          return String(row.noiDungHoc || '').toLowerCase();
+        case 'sourceType':
+          return String(row.sourceType || '').toLowerCase();
+        case 'enableAttendance':
+          return row.enableAttendance ? 1 : 0;
+        case 'lastEditAt':
+          return row.lastEditAt ? new Date(row.lastEditAt).getTime() : 0;
+        default:
+          return 0;
+      }
+    };
+    rows.sort((a, b) => {
+      const va = get(a);
+      const vb = get(b);
+      if (sortCol === 'thangBuoi') {
+        const c = String(va).localeCompare(String(vb));
+        return dir * c;
+      }
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
+      return 0;
+    });
+    return rows;
+  }, [list, sortCol, sortDir]);
 
   const load = async () => {
     try {
-      const [sessionsResult, classesData] = await Promise.all([
-        sessionsApi.list(classFilter ? { classId: classFilter } : {}),
-        classesApi.list(),
-      ]);
-      setList(sessionsResult?.data ?? sessionsResult ?? []);
+      const params = {
+        flat: 1,
+        page,
+        pageSize,
+        ...(classFilter ? { classId: classFilter } : {}),
+      };
+      const [sessionsResult, classesData] = await Promise.all([sessionsApi.list(params), classesApi.list()]);
+      setList(sessionsResult?.data ?? []);
+      setTotal(sessionsResult?.total ?? 0);
       setClasses(classesData);
     } catch (e) {
       console.error(e);
     }
   };
 
-  useEffect(() => { load(); }, [classFilter]);
+  useEffect(() => {
+    setPage(1);
+  }, [classFilter, pageSize]);
+
+  useEffect(() => {
+    load();
+  }, [classFilter, page, pageSize]);
 
   const handleOpen = (row = null) => {
     if (row) {
@@ -116,6 +184,11 @@ export default function Sessions() {
     }
   };
 
+  const openSeatMap = (sessionId) => {
+    setSeatMapSessionId(sessionId);
+    setSeatMapOpen(true);
+  };
+
   return (
     <Box>
       <Typography variant="h5" sx={{ mb: 2, fontFamily: 'Lora, serif' }}>
@@ -134,31 +207,108 @@ export default function Sessions() {
         <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpen()} disabled={classes.length === 0}>
           Thêm ca thủ công
         </Button>
+        <FormControl sx={{ minWidth: 100 }} size="small">
+          <InputLabel>Số dòng</InputLabel>
+          <Select
+            label="Số dòng"
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(1);
+            }}
+          >
+            {[25, 50, 100].map((n) => (
+              <MenuItem key={n} value={n}>
+                {n}/trang
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Box>
+      <Box sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+        <Button
+          size="small"
+          startIcon={<NavigateBefore />}
+          disabled={page <= 1}
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+        >
+          Trang trước
+        </Button>
+        <Typography variant="body2" sx={{ minWidth: 140 }}>
+          Trang {page} / {Math.max(1, Math.ceil(total / pageSize) || 1)}
+        </Typography>
+        <Button
+          size="small"
+          endIcon={<NavigateNext />}
+          disabled={page >= Math.ceil(total / pageSize)}
+          onClick={() => setPage((p) => p + 1)}
+        >
+          Trang sau
+        </Button>
+        <Typography variant="body2" color="text.secondary">
+          Tổng {total} ca
+        </Typography>
       </Box>
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
             <TableRow sx={{ bgcolor: 'primary.light' }}>
-              <TableCell>ID</TableCell>
-              <TableCell>Lớp</TableCell>
-              <TableCell>Ngày học</TableCell>
-              <TableCell>Giờ</TableCell>
-              <TableCell>Tháng-Buổi</TableCell>
-              <TableCell>Nội dung</TableCell>
-              <TableCell>Nguồn</TableCell>
-              <TableCell>Điểm danh</TableCell>
-              <TableCell>Lần sửa cuối</TableCell>
+              <TableCell sortDirection={sortCol === 'id' ? sortDir : false}>
+                <TableSortLabel active={sortCol === 'id'} direction={sortCol === 'id' ? sortDir : 'asc'} onClick={() => handleSort('id')}>
+                  ID
+                </TableSortLabel>
+              </TableCell>
+              <TableCell sortDirection={sortCol === 'className' ? sortDir : false}>
+                <TableSortLabel active={sortCol === 'className'} direction={sortCol === 'className' ? sortDir : 'asc'} onClick={() => handleSort('className')}>
+                  Lớp
+                </TableSortLabel>
+              </TableCell>
+              <TableCell sortDirection={sortCol === 'ngayHoc' ? sortDir : false}>
+                <TableSortLabel active={sortCol === 'ngayHoc'} direction={sortCol === 'ngayHoc' ? sortDir : 'asc'} onClick={() => handleSort('ngayHoc')}>
+                  Ngày học
+                </TableSortLabel>
+              </TableCell>
+              <TableCell sortDirection={sortCol === 'startTime' ? sortDir : false}>
+                <TableSortLabel active={sortCol === 'startTime'} direction={sortCol === 'startTime' ? sortDir : 'asc'} onClick={() => handleSort('startTime')}>
+                  Giờ
+                </TableSortLabel>
+              </TableCell>
+              <TableCell sortDirection={sortCol === 'thangBuoi' ? sortDir : false}>
+                <TableSortLabel active={sortCol === 'thangBuoi'} direction={sortCol === 'thangBuoi' ? sortDir : 'asc'} onClick={() => handleSort('thangBuoi')}>
+                  Tháng-Buổi
+                </TableSortLabel>
+              </TableCell>
+              <TableCell sortDirection={sortCol === 'noiDungHoc' ? sortDir : false}>
+                <TableSortLabel active={sortCol === 'noiDungHoc'} direction={sortCol === 'noiDungHoc' ? sortDir : 'asc'} onClick={() => handleSort('noiDungHoc')}>
+                  Nội dung
+                </TableSortLabel>
+              </TableCell>
+              <TableCell sortDirection={sortCol === 'sourceType' ? sortDir : false}>
+                <TableSortLabel active={sortCol === 'sourceType'} direction={sortCol === 'sourceType' ? sortDir : 'asc'} onClick={() => handleSort('sourceType')}>
+                  Nguồn
+                </TableSortLabel>
+              </TableCell>
+              <TableCell sortDirection={sortCol === 'enableAttendance' ? sortDir : false}>
+                <TableSortLabel active={sortCol === 'enableAttendance'} direction={sortCol === 'enableAttendance' ? sortDir : 'asc'} onClick={() => handleSort('enableAttendance')}>
+                  Điểm danh
+                </TableSortLabel>
+              </TableCell>
+              <TableCell sortDirection={sortCol === 'lastEditAt' ? sortDir : false}>
+                <TableSortLabel active={sortCol === 'lastEditAt'} direction={sortCol === 'lastEditAt' ? sortDir : 'asc'} onClick={() => handleSort('lastEditAt')}>
+                  Lần sửa cuối
+                </TableSortLabel>
+              </TableCell>
               <TableCell align="right">Thao tác</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {list.map((row) => (
+            {sortedList.map((row) => (
               <TableRow key={row.id}>
                 <TableCell>{row.id}</TableCell>
                 <TableCell>{row.className}</TableCell>
                 <TableCell>{row.ngayHoc}</TableCell>
                 <TableCell>{row.startTime}</TableCell>
-                <TableCell>{row.thang ? `${row.thang}-B${row.buoi || '?'}` : '—'}</TableCell>
+                <TableCell>{labelThangBuoi(row.thang, row.buoi) || '—'}</TableCell>
                 <TableCell>{row.noiDungHoc || '—'}</TableCell>
                 <TableCell>
                   <Chip label={row.sourceType || 'manual'} size="small" color={row.sourceType === 'template' ? 'success' : 'default'} />
@@ -169,7 +319,7 @@ export default function Sessions() {
                 <TableCell>{row.lastEditAt ? new Date(row.lastEditAt).toLocaleString('vi-VN') : '—'}</TableCell>
                 <TableCell align="right">
                   {row.enableAttendance && (
-                    <Button size="small" component={Link} to={`/attendance?sessionId=${row.id}&classId=${row.classId}`} sx={{ mr: 0.5 }}>
+                    <Button size="small" onClick={() => openSeatMap(row.id)} sx={{ mr: 0.5 }}>
                       Điểm danh
                     </Button>
                   )}
@@ -250,6 +400,12 @@ export default function Sessions() {
         onConfirm={handleDeleteConfirm}
         title="Xác nhận xóa"
         message="Xóa ca học này?"
+      />
+      <SeatMapAttendanceDialog
+        open={seatMapOpen}
+        sessionId={seatMapSessionId}
+        onClose={() => setSeatMapOpen(false)}
+        onSaved={load}
       />
     </Box>
   );

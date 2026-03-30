@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; padding: 12px; }
+    .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+    button { padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; }
+    .primary { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+    .list { border: 1px solid #ddd; border-radius: 8px; max-height: 520px; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px; border-bottom: 1px solid #eee; text-align: left; vertical-align: middle; }
+    th { background: #f5f7fa; position: sticky; top: 0; z-index: 1; }
+    .thumb { width: 72px; height: 40px; object-fit: contain; background: #f3f4f6; border: 1px solid #ddd; border-radius: 4px; }
+    .muted { color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button id="btnAll" type="button">Chọn tất cả</button>
+    <button id="btnNone" type="button">Bỏ chọn tất cả</button>
+    <span id="count" class="muted">0 ảnh được chọn</span>
+    <span style="flex:1"></span>
+    <button id="btnCancel" type="button">Hủy</button>
+    <button id="btnContinue" class="primary" type="button">Tiếp tục khớp</button>
+  </div>
+  <div class="list">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:44px">Chọn</th>
+          <th style="width:84px">Ảnh</th>
+          <th style="width:90px">Điểm</th>
+          <th>Thời gian</th>
+        </tr>
+      </thead>
+      <tbody id="tb"></tbody>
+    </table>
+  </div>
+
+  <script>
+    var payloadB64 = '<?!= payloadB64 ?>';
+    var rowsRaw = <?!= rowsJson ?>;
+    var rows = Array.isArray(rowsRaw) ? rowsRaw : [];
+    if (!Array.isArray(rows) && typeof rowsRaw === 'string') {
+      try {
+        var parsed = JSON.parse(rowsRaw);
+        rows = Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        rows = [];
+      }
+    }
+    var selected = {};
+    var lastClickedIndex = -1;
+
+    function selectedCount() {
+      var c = 0;
+      for (var i = 0; i < rows.length; i++) if (selected[i]) c++;
+      return c;
+    }
+    function updateCount() {
+      var c = selectedCount();
+      document.getElementById('count').textContent = c + ' ảnh được chọn';
+      document.getElementById('btnContinue').disabled = c === 0;
+    }
+    function setAll(v) {
+      for (var i = 0; i < rows.length; i++) selected[i] = !!v;
+      render();
+    }
+    function onCheckClick(idx, checked, shiftKey) {
+      if (shiftKey && lastClickedIndex >= 0) {
+        var start = Math.min(lastClickedIndex, idx);
+        var end = Math.max(lastClickedIndex, idx);
+        for (var i = start; i <= end; i++) selected[i] = checked;
+      } else {
+        selected[idx] = checked;
+      }
+      lastClickedIndex = idx;
+      render();
+    }
+    function render() {
+      var tb = document.getElementById('tb');
+      tb.innerHTML = '';
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        var tr = document.createElement('tr');
+        var tdCk = document.createElement('td');
+        var ck = document.createElement('input');
+        ck.type = 'checkbox';
+        ck.checked = !!selected[i];
+        (function(idx) {
+          ck.addEventListener('click', function(ev) { onCheckClick(idx, ev.target.checked, !!ev.shiftKey); });
+        })(i);
+        tdCk.appendChild(ck);
+        tr.appendChild(tdCk);
+
+        var tdImg = document.createElement('td');
+        if (r.thumbUrl) {
+          var img = document.createElement('img');
+          img.className = 'thumb';
+          img.src = r.thumbUrl;
+          tdImg.appendChild(img);
+        } else {
+          tdImg.textContent = '—';
+        }
+        tr.appendChild(tdImg);
+
+        var tdMark = document.createElement('td');
+        tdMark.textContent = r.mark != null ? String(r.mark) : '—';
+        tr.appendChild(tdMark);
+
+        var tdTime = document.createElement('td');
+        tdTime.textContent = r.displayTime || '—';
+        tr.appendChild(tdTime);
+        tb.appendChild(tr);
+      }
+      updateCount();
+    }
+
+    document.getElementById('btnAll').onclick = function() { setAll(true); };
+    document.getElementById('btnNone').onclick = function() { setAll(false); };
+    document.getElementById('btnCancel').onclick = function() { google.script.host.close(); };
+    document.getElementById('btnContinue').onclick = function() {
+      var selectedIndices = [];
+      for (var i = 0; i < rows.length; i++) if (selected[i]) selectedIndices.push(i);
+      if (!selectedIndices.length) return;
+      document.getElementById('btnContinue').disabled = true;
+      google.script.run
+        .withSuccessHandler(function() { google.script.host.close(); })
+        .withFailureHandler(function(err) {
+          document.getElementById('btnContinue').disabled = false;
+          alert('Lỗi: ' + (err && err.message ? err.message : err));
+        })
+        .continueAzotaWithSelection(payloadB64, selectedIndices);
+    };
+
+    setAll(true);
+  </script>
+</body>
+</html>

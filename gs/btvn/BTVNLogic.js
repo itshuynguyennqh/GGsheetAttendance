@@ -307,12 +307,16 @@ function processBTVNAzota() {
     // ==========================================
     // BƯỚC 5: Lấy hashid từ sheet "Danh sách Bài"
     // ==========================================
-    const hashidArray = extractHashids(externalSS, x);
+    const hashidResult = extractHashids(externalSS, x);
+    const hashidArray = hashidResult.hashids;
     _log('KẾT QUẢ', 'Hashid: ' + JSON.stringify(hashidArray));
     if (hashidArray.length === 0) {
       SpreadsheetApp.getUi().alert('⚠️ Không tìm thấy hashid nào cho giá trị x = "' + x + '" trong sheet "Danh sách Bài"');
       return;
     }
+    const fallbackInfo = hashidResult.fallback && hashidResult.formatUsed
+      ? { x: hashidResult.x, formatUsed: hashidResult.formatUsed }
+      : null;
     
     // ==========================================
     // BƯỚC 6: Tạo dictionary học viên từ sheet "Tổng hợp HS"
@@ -332,12 +336,16 @@ function processBTVNAzota() {
     // ==========================================
     // BƯỚC 8: Ghi kết quả về sheet "BaoCao"
     // ==========================================
-    writeResultsToBaoCao(baoCaoSheet, hv, results, rowMapping, baoCaoColumnMapping);
+    writeResultsToBaoCao(baoCaoSheet, hv, results, rowMapping, baoCaoColumnMapping, fallbackInfo);
     
     const foundCount = Object.keys(results).length;
     _log('KẾT QUẢ', 'Tổng kết: x="' + x + '", HV=' + hv.length + ', hashid=' + (hashidArray ? hashidArray.length : 0) + ', dict=' + Object.keys(studentDict).length + ', match=' + foundCount + ', không tìm thấy=' + (hv.length - foundCount));
     _log('KẾT QUẢ', 'results=' + JSON.stringify(results));
-    SpreadsheetApp.getUi().alert('✅ Đã xử lý xong!\n- Tìm thấy: ' + foundCount + '/' + hv.length + ' học viên có dữ liệu\n- Không tìm thấy: ' + (hv.length - foundCount) + ' học viên');
+    var alertMsg = '✅ Đã xử lý xong!\n- Tìm thấy: ' + foundCount + '/' + hv.length + ' học viên có dữ liệu\n- Không tìm thấy: ' + (hv.length - foundCount) + ' học viên';
+    if (fallbackInfo) {
+      alertMsg += '\n\n⚠️ Lưu ý: Chưa có bài "' + fallbackInfo.x + '" trong Danh sách Bài → đã dùng bài "' + fallbackInfo.formatUsed + '" để lấy hashid. Các dòng không khớp hiển thị thông báo tương ứng.';
+    }
+    SpreadsheetApp.getUi().alert(alertMsg);
     
   } catch (error) {
     SpreadsheetApp.getUi().alert('❌ Lỗi: ' + error.message);
@@ -350,54 +358,28 @@ function processBTVNAzota() {
 // ======================================================
 
 /**
- * So sánh hai giá trị Format để tìm giá trị nhỏ hơn
- * Format thường có dạng: "T{số}.{năm}-B{số}" (ví dụ: "T02.2026-B1")
- * 
- * Logic so sánh:
- * 1. Parse format: T số, năm, B số
- * 2. So sánh theo thứ tự: T số → năm → B số
- * 3. Nếu không match format chuẩn, so sánh theo string
- * 
- * @param {string} format1 - Format thứ nhất
- * @param {string} format2 - Format thứ hai
- * @return {number} - -1 nếu format1 < format2, 1 nếu format1 > format2, 0 nếu bằng nhau
+ * So sánh Format: legacy "T{tháng}.{năm}-B{n}" hoặc chuẩn "YYYY.MM-B{n}"
  */
 function compareFormat(format1, format2) {
   const str1 = String(format1).trim();
   const str2 = String(format2).trim();
-  
-  // Parse format: T{số}.{năm}-B{số}
-  const parseFormat = function(formatStr) {
-    const match = formatStr.match(/^T(\d+)\.(\d+)-B(\d+)$/i);
-    if (match) {
-      return {
-        tNumber: parseInt(match[1], 10),
-        year: parseInt(match[2], 10),
-        bNumber: parseInt(match[3], 10),
-        valid: true
-      };
-    }
-    return { valid: false };
+
+  const toTuple = function (s) {
+    var m = s.match(/^T(\d+)\.(\d+)-B(\d+)$/i);
+    if (m) return { y: parseInt(m[2], 10), mo: parseInt(m[1], 10), b: parseInt(m[3], 10), ok: true };
+    m = s.match(/^(\d{4})\.(\d{2})-B(\d+)$/i);
+    if (m) return { y: parseInt(m[1], 10), mo: parseInt(m[2], 10), b: parseInt(m[3], 10), ok: true };
+    return { ok: false };
   };
-  
-  const parsed1 = parseFormat(str1);
-  const parsed2 = parseFormat(str2);
-  
-  // Nếu cả 2 đều parse được → so sánh theo T số, năm, B số
-  if (parsed1.valid && parsed2.valid) {
-    if (parsed1.tNumber !== parsed2.tNumber) {
-      return parsed1.tNumber < parsed2.tNumber ? -1 : 1;
-    }
-    if (parsed1.year !== parsed2.year) {
-      return parsed1.year < parsed2.year ? -1 : 1;
-    }
-    if (parsed1.bNumber !== parsed2.bNumber) {
-      return parsed1.bNumber < parsed2.bNumber ? -1 : 1;
-    }
+
+  var a = toTuple(str1);
+  var b = toTuple(str2);
+  if (a.ok && b.ok) {
+    if (a.y !== b.y) return a.y < b.y ? -1 : 1;
+    if (a.mo !== b.mo) return a.mo < b.mo ? -1 : 1;
+    if (a.b !== b.b) return a.b < b.b ? -1 : 1;
     return 0;
   }
-  
-  // Nếu không parse được → so sánh theo string
   if (str1 < str2) return -1;
   if (str1 > str2) return 1;
   return 0;
@@ -490,7 +472,7 @@ function extractHashids(externalSS, x) {
 
   if (y === null) {
     _log('DANH SÁCH BÀI', 'Kết quả: không có Format nào nhỏ hơn x = "' + xStr + '" → không hashid');
-    return hashids;
+    return { hashids: hashids, fallback: !foundX, x: xStr, formatUsed: null };
   }
 
   _log('DANH SÁCH BÀI', 'Lấy hashid từ Format y = "' + y + '" (lớn nhất mà vẫn < x "' + xStr + '")' + (foundX ? '' : ' [fallback]'));
@@ -572,7 +554,7 @@ function extractHashids(externalSS, x) {
   }
 
   _log('DANH SÁCH BÀI', '→ extractHashids(x="' + xStr + '") → y="' + (y || 'null') + '" → trả về: ' + hashids.length + ' phần tử = ' + JSON.stringify(hashids));
-  return hashids;
+  return { hashids: hashids, fallback: !foundX, x: xStr, formatUsed: y };
 }
 
 // ======================================================
@@ -892,20 +874,27 @@ function matchAndGetScores(externalSS, hashidArray, studentDict) {
  * @param {Object} results - Dictionary {hv: result_string}
  * @param {Array} rowMapping - Mảng mapping index -> dòng thực tế
  * @param {Object} columnMapping - Column mapping object
+ * @param {Object|null} fallbackInfo - Khi dùng fallback: { x, formatUsed }; dùng để ghi thông báo rõ ràng thay vì "Không tìm thấy dữ liệu"
  */
-function writeResultsToBaoCao(baoCaoSheet, hvArray, results, rowMapping, columnMapping) {
+function writeResultsToBaoCao(baoCaoSheet, hvArray, results, rowMapping, columnMapping, fallbackInfo) {
   const valuesToWrite = [];
   const rowsToColor = []; // Lưu các dòng cần tô màu cam
   
   // Lấy column number cho cột result (1-based)
   const resultColNum = (columnMapping.result || 8) + 1; // index 8 = column 9 (I)
   
+  // Khi đang dùng fallback (chưa có đúng bài x trong Danh sách Bài), dùng thông báo rõ ràng cho các dòng không có kết quả
+  const defaultNoData = fallbackInfo && fallbackInfo.x && fallbackInfo.formatUsed
+    ? ('Chưa có bài ' + fallbackInfo.x + ' trong Danh sách Bài (đã dùng ' + fallbackInfo.formatUsed + ')')
+    : 'Không tìm thấy dữ liệu';
+  
   _log('GHI KẾT QUẢ', 'Cột ghi: index ' + (columnMapping.result || 8) + ' → cột số ' + resultColNum);
   _log('GHI KẾT QUẢ', 'Công thức tô cam: result chứa "Chưa làm BTVN Azota" HOẶC "Làm chưa đạt yêu cầu"');
+  if (fallbackInfo) _log('GHI KẾT QUẢ', 'Fallback: x="' + fallbackInfo.x + '", formatUsed="' + fallbackInfo.formatUsed + '" → defaultNoData="' + defaultNoData.slice(0, 60) + '..."');
 
   for (let i = 0; i < hvArray.length; i++) {
     const hv = String(hvArray[i]).trim();
-    const result = results[hv] || 'Không tìm thấy dữ liệu';
+    const result = results[hv] || defaultNoData;
     valuesToWrite.push([result]);
 
     // Đánh dấu các dòng cần tô màu cam (kể cả khi nhiều bài: Bài 1: X, Bài 2: Chưa làm...)

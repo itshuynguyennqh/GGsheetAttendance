@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db, setLastEdit } = require('../db');
+const { normalizeThang } = require('./attendanceImportHelpers');
 
 router.get('/timestamp', (req, res) => {
   try {
@@ -225,7 +226,9 @@ router.post('/:id/generate-sessions', (req, res) => {
         ).get(classId, ngayHoc, t.startTime || '19:00');
         if (existing) continue;
 
-        const thang = `${d.getMonth() + 1}.${d.getFullYear()}`;
+        const month = d.getMonth() + 1;
+        const year = d.getFullYear();
+        const thang = normalizeThang(`${month}.${year}`);
         const buoiResult = db.prepare(
           'SELECT MAX(buoi) as maxBuoi FROM sessions WHERE classId = ? AND thang = ?'
         ).get(classId, thang);

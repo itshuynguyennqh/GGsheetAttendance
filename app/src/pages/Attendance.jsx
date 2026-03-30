@@ -16,7 +16,6 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { NavigateBefore, NavigateNext } from '@mui/icons-material';
 import { useSearchParams } from 'react-router-dom';
 import { useAttendanceData } from '../hooks/useAttendanceData';
 import { useSaveQueue } from '../hooks/useSaveQueue';
@@ -32,8 +31,6 @@ export default function Attendance() {
   const [searchParams] = useSearchParams();
   const classIdParam = searchParams.get('classId');
   const [classId, setClassId] = useState(classIdParam || '');
-  const [page, setPage] = useState(1);
-  const [pageSize] = useState(12);
   const [ngayHocGte, setNgayHocGte] = useState(defaultNgayHocGte);
   const [ngayHocLte, setNgayHocLte] = useState(today);
   const [selectedCells, setSelectedCells] = useState(new Set());
@@ -48,7 +45,7 @@ export default function Attendance() {
   const focusedCellRef = useRef(null);
   const isFirstLoadRef = useRef(true);
 
-  const data = useAttendanceData({ ngayHocGte, ngayHocLte, page, pageSize });
+  const data = useAttendanceData({ ngayHocGte, ngayHocLte });
   const {
     load,
     classes,
@@ -60,7 +57,6 @@ export default function Attendance() {
     loading,
     revalidating,
     loadProgress,
-    totalGroups,
     rows,
     studentIndexMapRef,
     sessionIndexMapRef,
@@ -201,8 +197,9 @@ export default function Attendance() {
         if (next) {
           const newKey = getCellKey(next.student.id, next.session.id);
           focusedCellRef.current = newKey;
-          const el = cellRefs.current[newKey]?.querySelector?.('[role="combobox"]');
-          if (el) el.focus();
+          const root = cellRefs.current[newKey];
+          const el = root?.tagName === 'SELECT' ? root : root?.querySelector?.('[role="combobox"]');
+          if (el?.focus) el.focus();
           setFocusedCell(newKey);
           setSelectedCells(new Set([newKey]));
         }
@@ -238,7 +235,7 @@ export default function Attendance() {
 
   const handleCellClick = useCallback(
     (e, sid, sessId) => {
-      if (e.target?.closest('.MuiSelect-select') || e.target?.closest('.MuiSelect-root')) return;
+      if (e.target?.closest('select') || e.target?.closest('.MuiSelect-select') || e.target?.closest('.MuiSelect-root')) return;
       const cellKey = getCellKey(sid, sessId);
       if (e.shiftKey && focusedCell) {
         e.preventDefault();
@@ -267,8 +264,19 @@ export default function Attendance() {
   );
 
   return (
-    <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+    <Box
+      sx={{
+        width: '100%',
+        maxWidth: '100%',
+        minWidth: 0,
+        alignSelf: 'stretch',
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        boxSizing: 'border-box',
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, width: '100%', minWidth: 0 }}>
         <Typography variant="h5" sx={{ fontFamily: 'Lora, serif' }}>
           Điểm danh
         </Typography>
@@ -303,8 +311,8 @@ export default function Attendance() {
           sx={{ mb: 1, height: 6, borderRadius: 1 }}
         />
       )}
-      <Box sx={{ mb: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+      <Box sx={{ mb: 2, display: 'flex', flexDirection: 'column', gap: 2, width: '100%', minWidth: 0, boxSizing: 'border-box' }}>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap', width: '100%', minWidth: 0 }}>
           <FormControl sx={{ minWidth: 140 }}>
             <InputLabel>Lớp</InputLabel>
             <Select
@@ -325,10 +333,7 @@ export default function Attendance() {
             type="date"
             label="Từ ngày"
             value={ngayHocGte}
-            onChange={(e) => {
-              setNgayHocGte(e.target.value);
-              setPage(1);
-            }}
+            onChange={(e) => setNgayHocGte(e.target.value)}
             disabled={loading}
             InputLabelProps={{ shrink: true }}
             size="small"
@@ -338,10 +343,7 @@ export default function Attendance() {
             type="date"
             label="Đến ngày"
             value={ngayHocLte}
-            onChange={(e) => {
-              setNgayHocLte(e.target.value);
-              setPage(1);
-            }}
+            onChange={(e) => setNgayHocLte(e.target.value)}
             disabled={loading}
             InputLabelProps={{ shrink: true }}
             size="small"
@@ -358,35 +360,12 @@ export default function Attendance() {
             Import điểm danh
           </Button>
         </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Button
-            size="small"
-            disabled={page <= 1 || loading}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            startIcon={<NavigateBefore />}
-          >
-            Trang trước
-          </Button>
-          <Typography variant="body2" sx={{ minWidth: 120 }}>
-            Trang {page} / {Math.max(1, Math.ceil(totalGroups / pageSize) || 1)}
-          </Typography>
-          <Button
-            size="small"
-            disabled={page >= Math.ceil(totalGroups / pageSize) || loading}
-            onClick={() => setPage((p) => p + 1)}
-            endIcon={<NavigateNext />}
-          >
-            Trang sau
-          </Button>
-          <Typography variant="body2" color="text.secondary">
-            ({totalGroups} nhóm buổi)
-          </Typography>
-        </Box>
         <Typography variant="body2" color="text.secondary">
           X=có mặt, B=bù, M=nghỉ phép, P=nghỉ · Ctrl+C/V · Del= all · Shift+Click=chọn vùng · Mũi tên=di chuyển · Ctrl+Alt+M=ghi chú
         </Typography>
       </Box>
 
+      <Box sx={{ width: '100%', minWidth: 0, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <AttendanceGrid
         rows={rows}
         sessionGroups={sessionGroups}
@@ -399,13 +378,13 @@ export default function Attendance() {
         focusedCell={focusedCell}
         setFocusedCell={setFocusedCell}
         setSelectedCells={setSelectedCells}
-        openDropdowns={openDropdowns}
         setOpenDropdowns={setOpenDropdowns}
         cellRefs={cellRefs}
         focusedCellRef={focusedCellRef}
         onKeyDown={handleKeyDown}
         onCellClick={handleCellClick}
       />
+      </Box>
 
       <AttendanceImportDialog
         open={importDialogOpen}
