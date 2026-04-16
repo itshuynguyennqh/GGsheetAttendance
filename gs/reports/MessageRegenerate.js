@@ -5,24 +5,33 @@
 
 var MESSAGE_REGENERATE_SHEET_DEFAULT = "Báo Cáo Tổng Hợp";
 
+var DOC_REGEN_MONTH = "regen_msg_month";
+var DOC_REGEN_YEAR = "regen_msg_year";
+var DOC_REGEN_SALUTATION = "regen_msg_salutation";
+
+function _getRegenMessageDocPrefs() {
+  var p = PropertiesService.getDocumentProperties();
+  return {
+    month: p.getProperty(DOC_REGEN_MONTH) || "",
+    year: p.getProperty(DOC_REGEN_YEAR) || "",
+    salutation: p.getProperty(DOC_REGEN_SALUTATION) || ""
+  };
+}
+
+function _saveRegenMessageDocPrefs(month, year, salutation) {
+  var p = PropertiesService.getDocumentProperties();
+  var props = {};
+  props[DOC_REGEN_MONTH] = String(month);
+  props[DOC_REGEN_YEAR] = String(year);
+  props[DOC_REGEN_SALUTATION] = salutation === "anh" ? "anh" : "chị";
+  p.setProperties(props, false);
+}
+
 function _mrFindCol(headerRow, name) {
   for (var i = 0; i < headerRow.length; i++) {
     if (String(headerRow[i] || "").trim() === name) return i;
   }
   return -1;
-}
-
-/** Parse tỉ lệ BTVN Azota từ "x/y (z%)" */
-function _mrParseBTVNAzotaRate(s) {
-  if (!s || typeof s !== "string") return null;
-  var m = String(s).match(/\((\d+(?:[.,]\d+)?)\s*%\)/);
-  if (m) return parseFloat(m[1].replace(",", "."));
-  var mm = String(s).match(/(\d+)\s*\/\s*(\d+)/);
-  if (mm) {
-    var den = parseInt(mm[2], 10);
-    return den > 0 ? (parseInt(mm[1], 10) / den * 100) : null;
-  }
-  return null;
 }
 
 function _mrFirstLine(cell) {
@@ -57,29 +66,49 @@ function _mrTailLines(cell, maxLines) {
   return parts.slice(1, 1 + maxLines);
 }
 
-/** Rút gọn nhận xét: tối đa maxLines dòng, mỗi dòng tối đa maxLen ký tự */
-function _mrShortenNhanXet(text, maxLines, maxLen) {
-  maxLines = maxLines || 2;
-  maxLen = maxLen || 100;
-  var s = String(text || "").trim();
-  if (!s) return "";
-  var rows = s.split(/\n/).map(function(x) {
-    return x.trim();
-  }).filter(Boolean);
+/**
+ * Lấy các cụm in đậm từ RichTextValue (minh chứng tag trong ô TC).
+ */
+function _mrExtractBoldPhrases(richVal) {
   var out = [];
-  for (var i = 0; i < rows.length && out.length < maxLines; i++) {
-    var line = rows[i];
-    if (line.length > maxLen) line = line.substring(0, maxLen - 1) + "…";
-    out.push(line);
+  if (!richVal || typeof richVal.getRuns !== "function") return out;
+  var runs;
+  try {
+    runs = richVal.getRuns();
+  } catch (e) {
+    return out;
   }
-  return out.join(" ");
+  if (!runs || !runs.length) return out;
+  var seen = {};
+  for (var i = 0; i < runs.length; i++) {
+    var run = runs[i];
+    if (!run) continue;
+    var st = run.getTextStyle();
+    if (!st || st.isBold() !== true) continue;
+    var t = String(run.getText() || "").trim();
+    if (!t) continue;
+    var k = t.toLowerCase();
+    if (seen[k]) continue;
+    seen[k] = true;
+    out.push(t);
+  }
+  return out;
 }
 
-/** "5/10 (50%)" -> { done:5, total:10 } */
-function _mrBtvnXY(s) {
-  var m = String(s || "").match(/(\d+)\s*\/\s*(\d+)/);
-  if (!m) return null;
-  return { done: parseInt(m[1], 10), total: parseInt(m[2], 10) };
+/** Nối bold + fallback tail; dùng cho một dòng mô tả lỗi. */
+function _mrDetailFromTc(boldList, cellPlain, maxTail) {
+  maxTail = maxTail || 3;
+  if (boldList && boldList.length > 0) return boldList.join(", ");
+  var tail = _mrTailLines(cellPlain, maxTail);
+  if (tail.length) return tail.join("; ");
+  return "";
+}
+
+/**
+ * @param {string} firstLower - dòng đầu ô TC (lowercase)
+ */
+function _mrTcDimensionBad(firstLower) {
+  return firstLower !== "" && firstLower !== "ok";
 }
 
 /**
@@ -94,6 +123,7 @@ function buildMessageV2(ctx) {
   var M = ctx.month;
   var Y = ctx.year;
 
+  var tcBtvn = _mrFirstLine(ctx.tcBTVN).toLowerCase();
   var tcChep = _mrFirstLine(ctx.tcChepPhat).toLowerCase();
   var tcThai = _mrFirstLine(ctx.tcThaiDo).toLowerCase();
   var nghiNum = null;
@@ -103,21 +133,14 @@ function buildMessageV2(ctx) {
   }
   var curAvg = _mrParseFloat(ctx.diemTB);
   var prevAvg = _mrParseFloat(ctx.diemTBTruoc);
-  var curPct = _mrParseBTVNAzotaRate(String(ctx.chiSoBTVN || ""));
-  var prevPct = _mrParseBTVNAzotaRate(String(ctx.chiSoBTVNTruoc || ""));
-  var btvnXY = _mrBtvnXY(String(ctx.chiSoBTVN || ""));
-  var nxShort = _mrShortenNhanXet(ctx.nhanXetChuaNhanDien, 2, 95);
 
   var scoreDropped =
     curAvg !== null && prevAvg !== null && curAvg < prevAvg - 0.05;
   var scoreLow =
     curAvg !== null && curAvg < 6.5 && (!prevAvg || curAvg <= prevAvg);
-  var btvnBad =
-    curPct !== null &&
-    (curPct <= 0.5 || (prevPct !== null && curPct + 0.5 < prevPct));
-  var btvnZero = curPct !== null && curPct <= 0.001;
-  var chepBad = tcChep !== "" && tcChep !== "ok";
-  var thaiBad = tcThai !== "" && tcThai !== "ok";
+  var btvnBad = _mrTcDimensionBad(tcBtvn);
+  var chepBad = _mrTcDimensionBad(tcChep);
+  var thaiBad = _mrTcDimensionBad(tcThai);
   var nghiBad = nghiNum !== null && nghiNum >= 1;
 
   var hasConcern =
@@ -126,8 +149,7 @@ function buildMessageV2(ctx) {
     btvnBad ||
     chepBad ||
     thaiBad ||
-    nghiBad ||
-    (nxShort && (chepBad || thaiBad || btvnBad || scoreDropped));
+    nghiBad;
 
   // —— Mở đầu (3 kiểu, xen kẽ theo seed)
   var open = "";
@@ -169,19 +191,12 @@ function buildMessageV2(ctx) {
 
   // —— Điểm tích cực (một đoạn, không bullet)
   var posBits = [];
+  if (tcBtvn === "ok") posBits.push("bài tập về nhà và nề nếp làm bài ổn");
   if (tcThai === "ok")
     posBits.push("trên lớp con có ý thức tốt");
   if (tcChep === "ok") posBits.push("không phải chép phạt");
   if (nghiNum !== null && nghiNum === 0)
     posBits.push("đi học chuyên cần, đầy đủ các buổi");
-  if (curPct !== null && curPct >= 99)
-    posBits.push("làm bài Azota đầy đủ");
-  else if (curPct !== null && curPct >= 50)
-    posBits.push(
-      "về nhà con có nỗ lực hoàn thành khoảng " +
-        Math.round(curPct) +
-        "% bài Azota"
-    );
   if (curAvg !== null && curAvg >= 8 && !scoreDropped)
     posBits.push("điểm kiểm tra đang ở mức khá (" + curAvg + " điểm)");
 
@@ -210,7 +225,7 @@ function buildMessageV2(ctx) {
     if (scoreDropped && thaiBad && chepBad)
       bridge +=
         "con đang có dấu hiệu sa sút rõ rệt về cả điểm số lẫn ý thức làm bài.";
-    else if (scoreDropped || btvnZero)
+    else if (scoreDropped)
       bridge +=
         "con đang có dấu hiệu sụt giảm / chưa ổn định về kết quả học tập.";
     else bridge += "con cần lưu ý thêm một số điểm sau.";
@@ -242,55 +257,33 @@ function buildMessageV2(ctx) {
       );
       body.push("");
     }
-    if (chepBad) {
-      var chepTail = _mrTailLines(ctx.tcChepPhat, 1);
-      var line =
-        "Về ý thức: Con vẫn còn phải chép phạt để ghi nhớ lỗi sai";
-      if (chepTail.length)
-        line += " (" + chepTail[0] + ").";
-      else line += ".";
-      body.push(line);
-      body.push("");
-    } else if (thaiBad) {
-      body.push(
-        "Về ý thức: Trên lớp con còn cần chấn chỉnh thái độ học tập."
-      );
+
+    var boldB = ctx.boldBtvn || [];
+    var boldT = ctx.boldThai || [];
+    var boldC = ctx.boldChep || [];
+
+    if (btvnBad) {
+      var dB = _mrDetailFromTc(boldB, ctx.tcBTVN, 3);
+      var lineB =
+        "Về BTVN: Con còn mắc thiếu sót / chưa ổn bài tập về nhà" +
+        (dB ? " (" + dB + ")." : ".");
+      body.push(lineB);
       body.push("");
     }
-    if (btvnBad) {
-      var bLine = "Về bài vở: ";
-      if (btvnZero && btvnXY)
-        bLine +=
-          "Con thiếu khá nhiều bài tập Azota (" +
-          btvnXY.done +
-          "/" +
-          btvnXY.total +
-          " bài).";
-      else if (prevPct !== null && curPct !== null && curPct < prevPct)
-        bLine +=
-          "Tỉ lệ Azota giảm so với tháng trước (khoảng " +
-          Math.round(curPct) +
-          "% so với " +
-          Math.round(prevPct) +
-          "%).";
-      else if (btvnXY)
-        bLine +=
-          "Con cần hoàn thành đều bài Azota (" +
-          btvnXY.done +
-          "/" +
-          btvnXY.total +
-          " bài).";
-      else bLine += "Con cần chủ động làm đủ bài Azota ở nhà.";
-      body.push(bLine);
-      if (nxShort && (btvnZero || btvnBad)) {
-        body.push("Đặc biệt: " + nxShort);
-      }
+    if (thaiBad) {
+      var dT = _mrDetailFromTc(boldT, ctx.tcThaiDo, 3);
+      var lineT =
+        "Về ý thức trên lớp: Con cần chấn chỉnh thái độ học tập" +
+        (dT ? " — cụ thể: " + dT + "." : ".");
+      body.push(lineT);
       body.push("");
-    } else if (nxShort && (chepBad || thaiBad)) {
-      body.push("Chi tiết: " + nxShort);
-      body.push("");
-    } else if (nxShort && scoreDropped) {
-      body.push("Ghi chú: " + nxShort);
+    }
+    if (chepBad) {
+      var dC = _mrDetailFromTc(boldC, ctx.tcChepPhat, 3);
+      var lineC =
+        "Về chép phạt / ghi nhớ lỗi: Con còn phải chép phạt" +
+        (dC ? " (" + dC + ")." : ".");
+      body.push(lineC);
       body.push("");
     }
 
@@ -346,12 +339,10 @@ function _mrBuildColMap(headerRow) {
     diemTB: _mrFindCol(headerRow, "Điểm TB"),
     diemTBTruoc: _mrFindCol(headerRow, "Điểm TB (T.trước)"),
     loi: _mrFindCol(headerRow, "Lỗi (BTVN/TV/YT)"),
-    chiSoBTVN: _mrFindCol(headerRow, "Chỉ số BTVN Azota"),
-    chiSoBTVNTruoc: _mrFindCol(headerRow, "Chỉ số BTVN Azota (T.trước)"),
     soBuoiNghi: _mrFindCol(headerRow, "Số buổi nghỉ"),
+    tcBTVN: _mrFindCol(headerRow, "TC BTVN"),
     tcThaiDo: _mrFindCol(headerRow, "TC Thái độ"),
     tcChepPhat: _mrFindCol(headerRow, "TC Chép phạt"),
-    nhanXet: _mrFindCol(headerRow, "Nhận xét chưa nhận diện"),
     noiDungTN: _mrFindCol(headerRow, "Nội dung tin nhắn"),
     xuHuong: _mrFindCol(headerRow, "Xu hướng"),
     chiTietXuHuong: _mrFindCol(headerRow, "Chi tiết xu hướng")
@@ -379,14 +370,44 @@ function regenerateMessagesOnSheet(sheet, month, year, salutation) {
   if (map.hoTen < 0 || map.noiDungTN < 0) {
     throw new Error("Thiếu cột bắt buộc: Họ Tên hoặc Nội dung tin nhắn");
   }
+  var lastSheetRow = values.length;
+
+  var richBtvnGrid = null;
+  var richThaiGrid = null;
+  var richChepGrid = null;
+  try {
+    if (map.tcBTVN >= 0) {
+      richBtvnGrid = sheet
+        .getRange(2, map.tcBTVN + 1, lastSheetRow, map.tcBTVN + 1)
+        .getRichTextValues();
+    }
+    if (map.tcThaiDo >= 0) {
+      richThaiGrid = sheet
+        .getRange(2, map.tcThaiDo + 1, lastSheetRow, map.tcThaiDo + 1)
+        .getRichTextValues();
+    }
+    if (map.tcChepPhat >= 0) {
+      richChepGrid = sheet
+        .getRange(2, map.tcChepPhat + 1, lastSheetRow, map.tcChepPhat + 1)
+        .getRichTextValues();
+    }
+  } catch (eRich) {
+    richBtvnGrid = null;
+    richThaiGrid = null;
+    richChepGrid = null;
+  }
+
   var colMsg = map.noiDungTN + 1;
   var boldPhrases = [
     "Cần lưu ý:",
     "Tuy nhiên",
     "Về điểm số:",
+    "Về BTVN:",
+    "Về ý thức trên lớp:",
+    "Về chép phạt",
+    "Về chuyên cần:",
     "Về bài vở:",
     "Về ý thức:",
-    "Về chuyên cần:",
     "sụt giảm",
     "sa sút",
     "em hơi lo lắng",
@@ -398,27 +419,43 @@ function regenerateMessagesOnSheet(sheet, month, year, salutation) {
     var row = values[r];
     var rowD = displays[r];
     var hasMa = map.maHV >= 0 && _mrCell(row, map.maHV).toString().trim();
-    var hasTen = _mrCell(rowD, map.hoTen).toString().trim() || _mrCell(row, map.hoTen).toString().trim();
+    var hasTen =
+      _mrCell(rowD, map.hoTen).toString().trim() ||
+      _mrCell(row, map.hoTen).toString().trim();
     if (map.maHV >= 0 && !hasMa) continue;
     if (map.maHV < 0 && !hasTen) continue;
+    var off = r - 1;
+    var bB = [];
+    var bT = [];
+    var bC = [];
+    if (richBtvnGrid && richBtvnGrid[off] && richBtvnGrid[off][0]) {
+      bB = _mrExtractBoldPhrases(richBtvnGrid[off][0]);
+    }
+    if (richThaiGrid && richThaiGrid[off] && richThaiGrid[off][0]) {
+      bT = _mrExtractBoldPhrases(richThaiGrid[off][0]);
+    }
+    if (richChepGrid && richChepGrid[off] && richChepGrid[off][0]) {
+      bC = _mrExtractBoldPhrases(richChepGrid[off][0]);
+    }
+
     var ctx = {
       hoTen: _mrCell(rowD, map.hoTen) || _mrCell(row, map.hoTen),
       diemTB: _mrCell(rowD, map.diemTB),
       diemTBTruoc: map.diemTBTruoc >= 0 ? _mrCell(rowD, map.diemTBTruoc) : "",
-      chiSoBTVN: map.chiSoBTVN >= 0 ? _mrCell(rowD, map.chiSoBTVN) : "",
-      chiSoBTVNTruoc:
-        map.chiSoBTVNTruoc >= 0 ? _mrCell(rowD, map.chiSoBTVNTruoc) : "",
       soBuoiNghi: map.soBuoiNghi >= 0 ? _mrCell(rowD, map.soBuoiNghi) : null,
+      tcBTVN: map.tcBTVN >= 0 ? _mrCell(rowD, map.tcBTVN) : "",
       tcThaiDo: map.tcThaiDo >= 0 ? _mrCell(rowD, map.tcThaiDo) : "",
       tcChepPhat: map.tcChepPhat >= 0 ? _mrCell(rowD, map.tcChepPhat) : "",
-      nhanXetChuaNhanDien: map.nhanXet >= 0 ? _mrCell(rowD, map.nhanXet) : "",
       loiBTVN: map.loi >= 0 ? _mrCell(rowD, map.loi) : "",
       xuHuong: map.xuHuong >= 0 ? _mrCell(rowD, map.xuHuong) : "",
       chiTietXuHuong:
         map.chiTietXuHuong >= 0 ? _mrCell(rowD, map.chiTietXuHuong) : "",
       month: month,
       year: year,
-      salutation: salutation
+      salutation: salutation,
+      boldBtvn: bB,
+      boldThai: bT,
+      boldChep: bC
     };
     var msg = buildMessageV2(ctx);
     sheet.getRange(r + 1, colMsg).setValue(msg);
@@ -435,27 +472,53 @@ function regenerateMessagesOnSheet(sheet, month, year, salutation) {
 
 function showRegenerateMessagesDialog() {
   var ui = SpreadsheetApp.getUi();
+  var saved = _getRegenMessageDocPrefs();
+  var hintMonth = saved.month
+    ? "\n(Để trống = dùng tháng đã lưu: " + saved.month + ")"
+    : "";
   var r1 = ui.prompt(
     "Tháng / Năm (lời chào)",
-    "Nhập tháng (1-12):",
+    "Nhập tháng (1-12):" + hintMonth,
     ui.ButtonSet.OK_CANCEL
   );
   if (r1.getSelectedButton() !== ui.Button.OK) return;
-  var month = parseInt(String(r1.getResponseText()).trim(), 10);
+  var monthStr = String(r1.getResponseText()).trim();
+  var month = monthStr
+    ? parseInt(monthStr, 10)
+    : saved.month
+      ? parseInt(String(saved.month).trim(), 10)
+      : NaN;
   if (isNaN(month) || month < 1 || month > 12) {
     ui.alert("Tháng không hợp lệ.");
     return;
   }
-  var r2 = ui.prompt("Năm:", "Nhập năm (vd: 2026):", ui.ButtonSet.OK_CANCEL);
+  var hintYear = saved.year
+    ? "\n(Để trống = dùng năm đã lưu: " + saved.year + ")"
+    : "";
+  var r2 = ui.prompt(
+    "Năm:",
+    "Nhập năm (vd: 2026):" + hintYear,
+    ui.ButtonSet.OK_CANCEL
+  );
   if (r2.getSelectedButton() !== ui.Button.OK) return;
-  var year = parseInt(String(r2.getResponseText()).trim(), 10);
+  var yearStr = String(r2.getResponseText()).trim();
+  var year = yearStr
+    ? parseInt(yearStr, 10)
+    : saved.year
+      ? parseInt(String(saved.year).trim(), 10)
+      : NaN;
   if (isNaN(year) || year < 2000 || year > 2100) {
     ui.alert("Năm không hợp lệ.");
     return;
   }
+  var salHint =
+    saved.salutation === "anh" || saved.salutation === "chị"
+      ? "\n\n(Lần trước: " + saved.salutation + ")"
+      : "";
   var r3 = ui.alert(
     "Xưng hô",
-    "Chọn Chị (mặc định PH nữ) hoặc Anh (PH nam).\n\nOK = chị / Cancel = anh",
+    "Chọn Chị (mặc định PH nữ) hoặc Anh (PH nam).\n\nOK = chị / Cancel = anh" +
+      salHint,
     ui.ButtonSet.OK_CANCEL
   );
   if (r3 === ui.Button.CLOSE) return;
@@ -473,6 +536,7 @@ function showRegenerateMessagesDialog() {
   }
   try {
     var n = regenerateMessagesOnSheet(sheet, month, year, salutation);
+    _saveRegenMessageDocPrefs(month, year, salutation);
     ui.alert("✅ Đã tạo lại nội dung tin nhắn (mẫu mới) cho " + n + " dòng.");
   } catch (e) {
     ui.alert("Lỗi: " + (e && e.message ? e.message : e));

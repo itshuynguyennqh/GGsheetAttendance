@@ -21,9 +21,11 @@ import AssignmentIcon from '@mui/icons-material/Assignment';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import SyncIcon from '@mui/icons-material/Sync';
 import GradeIcon from '@mui/icons-material/Grade';
+import EventSeatIcon from '@mui/icons-material/EventSeat';
 
 const drawerWidth = 240;
 const navItems = [
+  { path: '/scm', label: 'Sơ đồ lớp', icon: <EventSeatIcon /> },
   { path: '/courses', label: 'Khóa học', icon: <SchoolIcon /> },
   { path: '/classes', label: 'Lớp học', icon: <SchoolIcon /> },
   { path: '/sessions', label: 'Ca học', icon: <EventIcon /> },
@@ -85,8 +87,8 @@ export default function Layout({ children }) {
       <AppBar
         position="fixed"
         sx={{
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
-          ml: { sm: `${drawerWidth}px` },
+          width: { md: `calc(100% - ${drawerWidth}px)` },
+          ml: { md: `${drawerWidth}px` },
           background: 'linear-gradient(135deg, #f8c95a 0%, #f6bd3c 100%)',
           color: '#2c5a7f',
         }}
@@ -96,7 +98,7 @@ export default function Layout({ children }) {
             color="inherit"
             edge="start"
             onClick={() => setMobileOpen(!mobileOpen)}
-            sx={{ mr: 2, display: { sm: 'none' } }}
+            sx={{ mr: 2, display: { md: 'none' } }}
           >
             <MenuIcon />
           </IconButton>
@@ -120,7 +122,7 @@ export default function Layout({ children }) {
       </AppBar>
       <Box
         component="nav"
-        sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}
+        sx={{ width: { md: drawerWidth }, flexShrink: { md: 0 } }}
       >
         <Drawer
           variant="temporary"
@@ -128,7 +130,7 @@ export default function Layout({ children }) {
           onClose={() => setMobileOpen(false)}
           ModalProps={{ keepMounted: true }}
           sx={{
-            display: { xs: 'block', sm: 'none' },
+            display: { xs: 'block', md: 'none' },
             '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
           }}
         >
@@ -137,7 +139,7 @@ export default function Layout({ children }) {
         <Drawer
           variant="permanent"
           sx={{
-            display: { xs: 'none', sm: 'block' },
+            display: { xs: 'none', md: 'block' },
             '& .MuiDrawer-paper': {
               boxSizing: 'border-box',
               width: drawerWidth,
@@ -161,7 +163,7 @@ export default function Layout({ children }) {
           alignItems: 'stretch',
           alignSelf: 'stretch',
           p: 3,
-          width: { xs: '100%', sm: 'auto' },
+          width: { xs: '100%', md: 'auto' },
           maxWidth: '100%',
           boxSizing: 'border-box',
           mt: 8,

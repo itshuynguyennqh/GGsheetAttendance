@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { db, setLastEdit } = require('../db');
+const { buildSeatMapPayload } = require('../lib/seatMapPayload');
+const { normalizeThang } = require('./attendanceImportHelpers');
 const SEAT_ROWS = 4;
 const SEAT_COLS = 7;
 
@@ -203,8 +205,17 @@ router.get('/', (req, res) => {
       return res.json([]);
     }
 
-    const groupConditions = groups.map(() => '(s.thang = ? AND s.buoi = ?)').join(' OR ');
-    const groupValues = groups.flatMap(g => [g.thang, g.buoi]);
+    const groupConditions = groups.map(g => {
+      const t = g.thang === null ? 's.thang IS NULL' : 's.thang = ?';
+      const b = g.buoi === null ? 's.buoi IS NULL' : 's.buoi = ?';
+      return `(${t} AND ${b})`;
+    }).join(' OR ');
+    const groupValues = groups.flatMap(g => {
+      const vals = [];
+      if (g.thang !== null) vals.push(g.thang);
+      if (g.buoi !== null) vals.push(g.buoi);
+      return vals;
+    });
     const sql = `
       SELECT s.*, c.name as className FROM sessions s
       LEFT JOIN classes c ON s.classId = c.id
@@ -238,12 +249,12 @@ router.get('/:id/seat-map', (req, res) => {
     ).get(sessionId);
     if (!session) return res.status(404).json({ error: 'Not found' });
 
-    const students = db.prepare(
-      'SELECT * FROM students WHERE classId = ? ORDER BY maHV'
-    ).all(session.classId);
-    const seats = db.prepare(
-      'SELECT seatRow, seatCol, studentId, seatLabel, meta, lastEditAt FROM session_seat_map WHERE sessionId = ?'
-    ).all(sessionId).map((row) => ({ ...row, meta: parseMeta(row.meta) }));
+    const { grid, students, seats, guestStudentIds } = buildSeatMapPayload(
+      sessionId,
+      session,
+      SEAT_ROWS,
+      SEAT_COLS
+    );
 
     const cols = getReportCols();
     const scoreExpr = cols.score ? cols.score : 'NULL';
@@ -255,10 +266,11 @@ router.get('/:id/seat-map', (req, res) => {
 
     return res.json({
       session,
-      grid: { rows: SEAT_ROWS, cols: SEAT_COLS },
+      grid,
       students,
       seats,
       reports,
+      guestStudentIds,
     });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -268,8 +280,14 @@ router.get('/:id/seat-map', (req, res) => {
 router.put('/:id/seat-map', (req, res) => {
   try {
     const sessionId = Number(req.params.id);
-    const session = db.prepare('SELECT id FROM sessions WHERE id = ?').get(sessionId);
+    const session = db.prepare('SELECT id, classId FROM sessions WHERE id = ?').get(sessionId);
     if (!session) return res.status(404).json({ error: 'Not found' });
+
+    const layoutConfig = db.prepare(
+      'SELECT rows, cols FROM class_layout_config WHERE classId = ?'
+    ).get(session.classId);
+    const maxRows = layoutConfig ? layoutConfig.rows : SEAT_ROWS;
+    const maxCols = layoutConfig ? layoutConfig.cols : SEAT_COLS;
 
     const seats = Array.isArray(req.body?.seats) ? req.body.seats : [];
     const seenSeat = new Set();
@@ -279,7 +297,7 @@ router.put('/:id/seat-map', (req, res) => {
       const seatRow = Number(it?.seatRow);
       const seatCol = Number(it?.seatCol);
       if (!Number.isInteger(seatRow) || !Number.isInteger(seatCol)) continue;
-      if (seatRow < 0 || seatRow >= SEAT_ROWS || seatCol < 0 || seatCol >= SEAT_COLS) {
+      if (seatRow < 0 || seatRow >= maxRows || seatCol < 0 || seatCol >= maxCols) {
         return res.status(400).json({ error: 'Vị trí ghế không hợp lệ' });
       }
       const seatKey = `${seatRow}-${seatCol}`;
@@ -301,9 +319,24 @@ router.put('/:id/seat-map', (req, res) => {
       });
     }
 
+    const rawGuests = req.body?.guestStudentIds;
+    const guestStudentIds = Array.isArray(rawGuests)
+      ? [...new Set(rawGuests.map((x) => Number(x)).filter(Number.isFinite))]
+      : [];
+    const hostClassId = Number(session.classId);
+    for (const gid of guestStudentIds) {
+      const st = db.prepare('SELECT id, classId FROM students WHERE id = ?').get(gid);
+      if (!st) {
+        return res.status(400).json({ error: `Học viên ${gid} không tồn tại` });
+      }
+      if (Number(st.classId) === hostClassId) {
+        return res.status(400).json({ error: 'Danh sách khách không được chứa học viên thuộc lớp chủ nhật' });
+      }
+    }
+
     const now = new Date().toISOString();
     const by = 'user';
-    const tx = db.transaction((items) => {
+    const tx = db.transaction((items, guestIds) => {
       db.prepare('DELETE FROM session_seat_map WHERE sessionId = ?').run(sessionId);
       const insertStmt = db.prepare(
         'INSERT INTO session_seat_map (sessionId, seatRow, seatCol, studentId, seatLabel, meta, lastEditAt, lastEditBy) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
@@ -312,8 +345,15 @@ router.put('/:id/seat-map', (req, res) => {
         if (item.studentId == null) continue;
         insertStmt.run(sessionId, item.seatRow, item.seatCol, item.studentId, item.seatLabel, item.meta, now, by);
       }
+      db.prepare('DELETE FROM session_guest_students WHERE sessionId = ?').run(sessionId);
+      const insGuest = db.prepare(
+        'INSERT INTO session_guest_students (sessionId, studentId) VALUES (?, ?)'
+      );
+      for (const gid of guestIds) {
+        insGuest.run(sessionId, gid);
+      }
     });
-    tx(normalized);
+    tx(normalized, guestStudentIds);
     setLastEdit('sessions', sessionId);
     return res.json({ ok: true, count: normalized.length });
   } catch (e) {
@@ -353,26 +393,100 @@ router.patch('/:id/student-reports/:studentId', (req, res) => {
 
 router.post('/', (req, res) => {
   try {
-    const { classId, ngayHoc, startTime, noiDungHoc, enableAttendance } = req.body;
+    const { classId, ngayHoc, startTime, noiDungHoc, enableAttendance, thang, buoi } = req.body;
+    const classIdNum = classId == null || classId === '' ? NaN : Number(classId);
+    if (!Number.isFinite(classIdNum)) {
+      return res.status(400).json({ error: 'Thiếu hoặc không hợp lệ classId' });
+    }
+    const normalizedNgayHoc = ngayHoc || new Date().toISOString().slice(0, 10);
+    const normalizedStartTime = startTime || '19:00';
+    let thangVal = null;
+    if (thang != null && String(thang).trim() !== '') {
+      const tStr = String(thang).trim();
+      thangVal = normalizeThang(thang) || tStr;
+      if (thangVal === '') thangVal = null;
+    }
+    let buoiVal = null;
+    if (buoi != null && String(buoi).trim() !== '') {
+      const n = Number(buoi);
+      if (!Number.isInteger(n) || n < 1) {
+        return res.status(400).json({ error: 'Buổi phải là số nguyên dương' });
+      }
+      buoiVal = n;
+    }
     const result = db.prepare(
-      'INSERT INTO sessions (classId, ngayHoc, startTime, noiDungHoc, sourceType, enableAttendance) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(classId, ngayHoc || new Date().toISOString().slice(0, 10), startTime || '19:00', noiDungHoc || null, 'manual', enableAttendance !== 0 ? 1 : 0);
+      'INSERT INTO sessions (classId, ngayHoc, startTime, noiDungHoc, sourceType, enableAttendance, thang, buoi) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(
+      classIdNum,
+      normalizedNgayHoc,
+      normalizedStartTime,
+      noiDungHoc || null,
+      'manual',
+      enableAttendance !== 0 ? 1 : 0,
+      thangVal,
+      buoiVal
+    );
     const row = db.prepare('SELECT * FROM sessions WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(row);
   } catch (e) {
+    if (String(e.message || '').includes('UNIQUE constraint failed: sessions.classId, sessions.ngayHoc, sessions.startTime')) {
+      const { classId, ngayHoc, startTime } = req.body || {};
+      const normalizedNgayHoc = ngayHoc || new Date().toISOString().slice(0, 10);
+      const normalizedStartTime = startTime || '19:00';
+      const existing = db.prepare(
+        'SELECT id, classId, ngayHoc, startTime, noiDungHoc FROM sessions WHERE classId = ? AND ngayHoc = ? AND startTime = ?'
+      ).get(classId, normalizedNgayHoc, normalizedStartTime);
+      return res.status(409).json({
+        error: 'Ca học đã tồn tại (trùng lớp + ngày học + giờ).',
+        existing,
+      });
+    }
     res.status(500).json({ error: e.message });
   }
 });
 
 router.put('/:id', (req, res) => {
   try {
-    const { ngayHoc, startTime, noiDungHoc, enableAttendance } = req.body;
+    const { ngayHoc, startTime, noiDungHoc, enableAttendance, thang, buoi } = req.body;
+    const existing = db.prepare('SELECT * FROM sessions WHERE id = ?').get(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Not found' });
+
+    let nextThang = existing.thang ?? null;
+    let nextBuoi = existing.buoi != null ? existing.buoi : null;
+    if (thang !== undefined) {
+      if (thang == null || String(thang).trim() === '') nextThang = null;
+      else {
+        const tStr = String(thang).trim();
+        nextThang = normalizeThang(thang) || tStr;
+        if (nextThang === '') nextThang = null;
+      }
+    }
+    if (buoi !== undefined) {
+      if (buoi == null || String(buoi).trim() === '') nextBuoi = null;
+      else {
+        const n = Number(buoi);
+        if (!Number.isInteger(n) || n < 1) {
+          return res.status(400).json({ error: 'Buổi phải là số nguyên dương' });
+        }
+        nextBuoi = n;
+      }
+    }
+
     db.prepare(
-      'UPDATE sessions SET ngayHoc = COALESCE(?, ngayHoc), startTime = COALESCE(?, startTime), noiDungHoc = COALESCE(?, noiDungHoc), enableAttendance = COALESCE(?, enableAttendance) WHERE id = ?'
-    ).run(ngayHoc ?? undefined, startTime ?? undefined, noiDungHoc ?? undefined, enableAttendance ?? undefined, req.params.id);
+      `UPDATE sessions SET ngayHoc = COALESCE(?, ngayHoc), startTime = COALESCE(?, startTime),
+        noiDungHoc = COALESCE(?, noiDungHoc), enableAttendance = COALESCE(?, enableAttendance),
+        thang = ?, buoi = ? WHERE id = ?`
+    ).run(
+      ngayHoc ?? undefined,
+      startTime ?? undefined,
+      noiDungHoc ?? undefined,
+      enableAttendance ?? undefined,
+      nextThang,
+      nextBuoi,
+      req.params.id
+    );
     setLastEdit('sessions', req.params.id);
     const row = db.prepare('SELECT * FROM sessions WHERE id = ?').get(req.params.id);
-    if (!row) return res.status(404).json({ error: 'Not found' });
     res.json(row);
   } catch (e) {
     res.status(500).json({ error: e.message });

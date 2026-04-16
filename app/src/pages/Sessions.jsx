@@ -27,10 +27,17 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { NavigateBefore, NavigateNext } from '@mui/icons-material';
-import { classesApi, sessionsApi } from '../api';
+import { attendanceApi, classesApi, sessionsApi } from '../api';
 import ConfirmDialog from '../components/ConfirmDialog';
 import SeatMapAttendanceDialog from '../components/SeatMapAttendanceDialog';
 import { formatThangBuoiLabel as labelThangBuoi } from '../utils/formatThangBuoi';
+
+function thangFromNgayHoc(ymd) {
+  if (!ymd || typeof ymd !== 'string') return '';
+  const m = ymd.match(/^(\d{4})-(\d{2})-/);
+  if (!m) return '';
+  return `${m[1]}.${m[2]}`;
+}
 
 export default function Sessions() {
   const [list, setList] = useState([]);
@@ -39,7 +46,15 @@ export default function Sessions() {
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, id: null });
-  const [form, setForm] = useState({ classId: '', ngayHoc: '', startTime: '19:00', noiDungHoc: '', enableAttendance: true });
+  const [form, setForm] = useState({
+    classId: '',
+    ngayHoc: '',
+    startTime: '19:00',
+    thang: '',
+    buoi: '',
+    noiDungHoc: '',
+    enableAttendance: true,
+  });
   const [sortCol, setSortCol] = useState('ngayHoc');
   const [sortDir, setSortDir] = useState('desc');
   const [page, setPage] = useState(1);
@@ -129,15 +144,20 @@ export default function Sessions() {
         classId: row.classId,
         ngayHoc: row.ngayHoc?.slice(0, 10) || '',
         startTime: row.startTime || '19:00',
+        thang: row.thang != null && row.thang !== '' ? String(row.thang) : '',
+        buoi: row.buoi != null && row.buoi !== '' ? String(row.buoi) : '',
         noiDungHoc: row.noiDungHoc || '',
         enableAttendance: row.enableAttendance !== 0,
       });
     } else {
+      const ngay = new Date().toISOString().slice(0, 10);
       setEditId(null);
       setForm({
         classId: classes[0]?.id || '',
-        ngayHoc: new Date().toISOString().slice(0, 10),
+        ngayHoc: ngay,
         startTime: '19:00',
+        thang: thangFromNgayHoc(ngay),
+        buoi: '1',
         noiDungHoc: '',
         enableAttendance: true,
       });
@@ -146,6 +166,21 @@ export default function Sessions() {
   };
 
   const handleSave = async () => {
+    const thangPayload = String(form.thang || '').trim();
+    const buoiPayload = String(form.buoi || '').trim();
+    const hasThang = thangPayload !== '';
+    const hasBuoi = buoiPayload !== '';
+    if (hasThang !== hasBuoi) {
+      alert('Nhập đủ cả Tháng (YYYY.MM) và Buổi trong tháng để hiện trên lưới điểm danh, hoặc để trống cả hai.');
+      return;
+    }
+    if (hasBuoi) {
+      const n = Number(form.buoi);
+      if (!Number.isInteger(n) || n < 1) {
+        alert('Buổi trong tháng phải là số nguyên dương (1, 2, 3, …).');
+        return;
+      }
+    }
     try {
       if (editId) {
         await sessionsApi.update(editId, {
@@ -153,6 +188,8 @@ export default function Sessions() {
           startTime: form.startTime,
           noiDungHoc: form.noiDungHoc,
           enableAttendance: form.enableAttendance ? 1 : 0,
+          thang: thangPayload || null,
+          buoi: buoiPayload === '' ? null : Number(buoiPayload),
         });
       } else {
         await sessionsApi.create({
@@ -161,9 +198,12 @@ export default function Sessions() {
           startTime: form.startTime,
           noiDungHoc: form.noiDungHoc,
           enableAttendance: form.enableAttendance ? 1 : 0,
+          thang: thangPayload || null,
+          buoi: buoiPayload === '' ? null : Number(buoiPayload),
         });
       }
       setOpen(false);
+      attendanceApi.clearCache();
       load();
     } catch (e) {
       alert(e.message);
@@ -178,6 +218,7 @@ export default function Sessions() {
     try {
       await sessionsApi.delete(id);
       setDeleteConfirm({ open: false, id: null });
+      attendanceApi.clearCache();
       load();
     } catch (e) {
       alert(e.message);
@@ -360,7 +401,33 @@ export default function Sessions() {
             fullWidth
             InputLabelProps={{ shrink: true }}
             value={form.ngayHoc}
-            onChange={(e) => setForm({ ...form, ngayHoc: e.target.value })}
+            onChange={(e) => {
+              const v = e.target.value;
+              setForm((prev) => ({
+                ...prev,
+                ngayHoc: v,
+                thang: !editId && prev.thang === thangFromNgayHoc(prev.ngayHoc) ? thangFromNgayHoc(v) : prev.thang,
+              }));
+            }}
+          />
+          <TextField
+            margin="dense"
+            label="Tháng (YYYY.MM)"
+            placeholder="2026.04"
+            fullWidth
+            helperText="Khớp cột tháng trên lưới điểm danh; để trống nếu không gắn buổi cố định"
+            value={form.thang}
+            onChange={(e) => setForm({ ...form, thang: e.target.value })}
+          />
+          <TextField
+            margin="dense"
+            label="Buổi trong tháng"
+            type="number"
+            fullWidth
+            inputProps={{ min: 1, step: 1 }}
+            helperText="Số buổi thứ mấy trong tháng (1, 2, …); để trống nếu không cần"
+            value={form.buoi}
+            onChange={(e) => setForm({ ...form, buoi: e.target.value })}
           />
           <TextField
             margin="dense"

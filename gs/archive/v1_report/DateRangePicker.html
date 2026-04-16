@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body { font-family: 'Segoe UI', sans-serif; padding: 20px; text-align: center; color: #333; background: #f9f9f9; }
+      h3 { margin-top: 0; color: #1a73e8; }
+      label { display: block; text-align: left; margin-top: 15px; font-weight: 600; font-size: 0.9em; margin-bottom: 5px; }
+      input { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+      input:focus { border-color: #1a73e8; outline: none; }
+      button { width: 100%; padding: 12px; background: #1a73e8; color: #fff; border: none; border-radius: 6px; cursor: pointer; margin-top: 25px; font-weight: bold; font-size: 14px; }
+      button:hover { background: #1557b0; }
+      button:disabled { background: #ccc; cursor: not-allowed; }
+      #loading { display: none; margin-top: 15px; color: #d93025; font-weight: 500; }
+      .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(0,0,0,.1); border-left-color: #d93025; border-radius: 50%; animation: spin 1s linear infinite; margin-right: 5px; vertical-align: middle; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <h3>📅 TÙY CHỌN BÁO CÁO</h3>
+    <label>Từ ngày:</label>
+    <input type="date" id="dateStart">
+    <label>Đến ngày:</label>
+    <input type="date" id="dateEnd">
+    <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #ddd;">
+      <label style="margin-bottom: 8px;">Khoảng BTVN Azota (Buổi / Tháng / Năm):</label>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 80px;">
+          <label style="font-size: 0.8em; color: #666;">Buổi đầu</label>
+          <input type="number" id="buoiStart" min="1" max="99" placeholder="1">
+        </div>
+        <div style="flex: 1; min-width: 80px;">
+          <label style="font-size: 0.8em; color: #666;">Tháng đầu</label>
+          <input type="number" id="thangStart" min="1" max="12" placeholder="3">
+        </div>
+        <div style="flex: 1; min-width: 80px;">
+          <label style="font-size: 0.8em; color: #666;">Năm đầu</label>
+          <input type="number" id="namStart" min="2020" max="2030" placeholder="2026">
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px;">
+        <div style="flex: 1; min-width: 80px;">
+          <label style="font-size: 0.8em; color: #666;">Buổi cuối</label>
+          <input type="number" id="buoiEnd" min="1" max="99" placeholder="5">
+        </div>
+        <div style="flex: 1; min-width: 80px;">
+          <label style="font-size: 0.8em; color: #666;">Tháng cuối</label>
+          <input type="number" id="thangEnd" min="1" max="12" placeholder="3">
+        </div>
+        <div style="flex: 1; min-width: 80px;">
+          <label style="font-size: 0.8em; color: #666;">Năm cuối</label>
+          <input type="number" id="namEnd" min="2020" max="2030" placeholder="2026">
+        </div>
+      </div>
+      <p style="font-size: 0.75em; color: #888; margin-top: 5px;">Để trống = lấy tất cả BTVN (không filter theo bài)</p>
+    </div>
+    <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #ddd;">
+      <label>So sánh với sheet (tháng trước):</label>
+      <select id="compareSheet" style="width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; background: #fff;">
+        <option value="">— Không so sánh —</option>
+      </select>
+      <p style="font-size: 0.75em; color: #888; margin-top: 5px;">Chọn sheet báo cáo tháng trước (cùng cấu trúc Báo Cáo Tổng Hợp) để thêm cột Xu hướng</p>
+    </div>
+    <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #ddd;">
+      <label>Sheet điểm danh:</label>
+      <select id="attendanceSheet" style="width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; background: #fff;">
+        <option value="">— Không chọn —</option>
+      </select>
+      <p style="font-size: 0.75em; color: #888; margin-top: 5px;">Chọn sheet điểm danh (Mã, Buổi 1-10 với X/P/M) để thêm cột Số buổi đi, Số buổi nghỉ</p>
+    </div>
+    <div id="loading"><span class="spinner"></span>Đang xử lý dữ liệu, vui lòng đợi...</div>
+    <button id="btnRun">🚀 TẠO BÁO CÁO</button>
+
+    <script>
+      (function() {
+        window.onload = function() {
+          google.script.run.withSuccessHandler(function(names) {
+            var compareSel = document.getElementById('compareSheet');
+            var attSel = document.getElementById('attendanceSheet');
+            if (names && names.length) {
+              for (var i = 0; i < names.length; i++) {
+                var opt1 = document.createElement('option');
+                opt1.value = names[i];
+                opt1.textContent = names[i];
+                compareSel.appendChild(opt1);
+                var opt2 = document.createElement('option');
+                opt2.value = names[i];
+                opt2.textContent = names[i];
+                attSel.appendChild(opt2);
+              }
+            }
+          }).getSheetNamesForCompare();
+          var d = new Date();
+          document.getElementById('dateEnd').valueAsDate = d;
+          d.setDate(1);
+          document.getElementById('dateStart').valueAsDate = d;
+          var m = d.getMonth() + 1, y = d.getFullYear();
+          document.getElementById('buoiStart').value = 1;
+          document.getElementById('thangStart').value = m;
+          document.getElementById('namStart').value = y;
+          document.getElementById('buoiEnd').value = 5;
+          document.getElementById('thangEnd').value = m;
+          document.getElementById('namEnd').value = y;
+        };
+
+        document.getElementById('btnRun').addEventListener('click', function() {
+          var s = document.getElementById('dateStart').value;
+          var e = document.getElementById('dateEnd').value;
+          if (!s || !e) {
+            alert('Vui lòng chọn đầy đủ ngày bắt đầu và kết thúc!');
+            return;
+          }
+          var buoiS = parseInt(document.getElementById('buoiStart').value, 10);
+          var thangS = parseInt(document.getElementById('thangStart').value, 10);
+          var namS = parseInt(document.getElementById('namStart').value, 10);
+          var buoiE = parseInt(document.getElementById('buoiEnd').value, 10);
+          var thangE = parseInt(document.getElementById('thangEnd').value, 10);
+          var namE = parseInt(document.getElementById('namEnd').value, 10);
+          var btvnRange = null;
+          if (!isNaN(buoiS) && !isNaN(thangS) && !isNaN(namS) && !isNaN(buoiE) && !isNaN(thangE) && !isNaN(namE)) {
+            btvnRange = { buoiStart: buoiS, thangStart: thangS, namStart: namS, buoiEnd: buoiE, thangEnd: thangE, namEnd: namE };
+          }
+          var compareSheetName = document.getElementById('compareSheet').value;
+          if (compareSheetName === '') compareSheetName = null;
+          var attendanceSheetName = document.getElementById('attendanceSheet').value;
+          if (attendanceSheetName === '') attendanceSheetName = null;
+          var btn = document.getElementById('btnRun');
+          var loader = document.getElementById('loading');
+          btn.disabled = true;
+          btn.innerText = '⏳ Đang tạo báo cáo...';
+          loader.style.display = 'block';
+
+          google.script.run
+            .withSuccessHandler(function() {
+              google.script.host.close();
+            })
+            .withFailureHandler(function(err) {
+              var msg = (err && err.message) ? err.message : String(err);
+              alert('Lỗi: ' + msg);
+              btn.disabled = false;
+              btn.innerText = '🚀 THỬ LẠI';
+              loader.style.display = 'none';
+            })
+            .generateRangeReport(s, e, btvnRange, compareSheetName, attendanceSheetName);
+        });
+      })();
+    </script>
+  </body>
+</html>

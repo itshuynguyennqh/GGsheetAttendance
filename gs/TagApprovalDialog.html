@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "Segoe UI", Arial, sans-serif; padding: 16px; font-size: 13px; color: #333; }
+    h3 { margin-bottom: 12px; color: #1a73e8; font-size: 16px; }
+    .hint { background: #e3f2fd; border: 1px solid #64b5f6; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 12px; line-height: 1.5; }
+    .table-wrap { overflow: auto; border: 1px solid #ddd; border-radius: 8px; max-height: 340px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid #eee; text-align: left; vertical-align: middle; }
+    th { background: #1a73e8; color: #fff; font-weight: 600; position: sticky; top: 0; z-index: 1; }
+    tr:hover { background: #f5f5f5; }
+    .spell-fix { color: #c62828; font-style: italic; }
+    .cat { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+    .cat-btvn { background: #fff3e0; color: #e65100; }
+    .cat-attitude { background: #fce4ec; color: #c62828; }
+    .cat-vocab { background: #e8eaf6; color: #283593; }
+    .cat-positive { background: #e8f5e9; color: #2e7d32; }
+    .cat-neutral { background: #f5f5f5; color: #616161; }
+    .cat-unknown { background: #eeeeee; color: #757575; }
+    .tag-new { background: #e1f5fe; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+    .actions { margin-top: 14px; display: flex; gap: 10px; align-items: center; }
+    button { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; transition: opacity .15s; }
+    button:hover { opacity: 0.85; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: #1a73e8; color: #fff; }
+    .btn-secondary { background: #e0e0e0; color: #333; }
+    .btn-select { background: none; border: 1px solid #999; border-radius: 6px; padding: 4px 10px; font-size: 11px; color: #555; }
+    #status { margin-top: 10px; font-size: 12px; color: #1b5e20; }
+    #loading { text-align: center; padding: 40px; color: #888; }
+    input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h3>Gợi ý Tag mới từ Gemini</h3>
+  <div class="hint">
+    Gemini đã phân tích các nhận xét chưa nhận diện. Chọn các tag bạn muốn thêm vào hệ thống rồi bấm <b>Approve Selected</b>.
+  </div>
+  <div id="loading">Đang tải dữ liệu...</div>
+  <div id="content" style="display:none;">
+    <div style="margin-bottom:8px;">
+      <button type="button" class="btn-select" onclick="toggleAll(true)">Chọn tất cả</button>
+      <button type="button" class="btn-select" onclick="toggleAll(false)">Bỏ chọn tất cả</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:36px">#</th>
+            <th>Nhận xét gốc</th>
+            <th>Sửa chính tả</th>
+            <th>Nhóm</th>
+            <th>Tag gợi ý</th>
+            <th>Short Label</th>
+            <th style="width:60px; text-align:center">Duyệt</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn-primary" id="btnApprove" onclick="approveSelected()">Approve Selected</button>
+      <button type="button" class="btn-secondary" onclick="google.script.host.close()">Skip All</button>
+    </div>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    var DATA = [];
+
+    function catClass(cat) {
+      var map = { btvn: "cat-btvn", attitude: "cat-attitude", vocab: "cat-vocab", positive: "cat-positive", neutral: "cat-neutral" };
+      return map[cat] || "cat-unknown";
+    }
+
+    function render(items) {
+      var tb = document.getElementById("tbody");
+      tb.innerHTML = "";
+      if (!items || !items.length) {
+        tb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#888;padding:20px">Không có gợi ý nào</td></tr>';
+        return;
+      }
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        var hasSuggestion = it.suggestedTag && it.suggestedTag.trim();
+        var tr = document.createElement("tr");
+        tr.innerHTML =
+          '<td>' + (i + 1) + '</td>' +
+          '<td>' + esc(it.original || "") + '</td>' +
+          '<td>' + (it.spellFix ? '<span class="spell-fix">' + esc(it.spellFix) + '</span>' : '—') + '</td>' +
+          '<td><span class="cat ' + catClass(it.category) + '">' + esc(it.category || "unknown") + '</span></td>' +
+          '<td>' + (hasSuggestion ? '<span class="tag-new">' + esc(it.suggestedTag) + '</span>' : '—') + '</td>' +
+          '<td>' + esc(it.shortLabel || "—") + '</td>' +
+          '<td style="text-align:center">' + (hasSuggestion ? '<input type="checkbox" data-idx="' + i + '">' : '') + '</td>';
+        tb.appendChild(tr);
+      }
+    }
+
+    function esc(s) {
+      var d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function toggleAll(checked) {
+      var boxes = document.querySelectorAll('#tbody input[type="checkbox"]');
+      for (var i = 0; i < boxes.length; i++) boxes[i].checked = checked;
+    }
+
+    function approveSelected() {
+      var boxes = document.querySelectorAll('#tbody input[type="checkbox"]:checked');
+      var items = [];
+      for (var i = 0; i < boxes.length; i++) {
+        var idx = parseInt(boxes[i].getAttribute("data-idx"), 10);
+        var it = DATA[idx];
+        if (it && it.suggestedTag) {
+          items.push({ tag: it.suggestedTag, category: it.category || "unknown", shortLabel: it.shortLabel || it.suggestedTag });
+        }
+      }
+      if (items.length === 0) {
+        document.getElementById("status").textContent = "Chưa chọn tag nào.";
+        return;
+      }
+      document.getElementById("btnApprove").disabled = true;
+      var statusEl = document.getElementById("status");
+      statusEl.textContent = "Đang lưu " + items.length + " tag...";
+      statusEl.style.color = "#1565c0";
+
+      var timeout = setTimeout(function() {
+        statusEl.textContent = "Server chưa phản hồi sau 15s. Thử lại...";
+        statusEl.style.color = "#e65100";
+        document.getElementById("btnApprove").disabled = false;
+      }, 15000);
+
+      google.script.run
+        .withSuccessHandler(function(count) {
+          clearTimeout(timeout);
+          statusEl.style.color = "#1b5e20";
+          statusEl.textContent = "Đã lưu " + (count || items.length) + " tag thành công!";
+          setTimeout(function() { google.script.host.close(); }, 1200);
+        })
+        .withFailureHandler(function(err) {
+          clearTimeout(timeout);
+          statusEl.style.color = "#c62828";
+          statusEl.textContent = "Lỗi: " + (err && err.message || String(err));
+          document.getElementById("btnApprove").disabled = false;
+        })
+        .applyApprovedTags(items);
+    }
+
+    google.script.run
+      .withSuccessHandler(function(data) {
+        DATA = data || [];
+        document.getElementById("loading").style.display = "none";
+        document.getElementById("content").style.display = "block";
+        render(DATA);
+      })
+      .withFailureHandler(function(err) {
+        document.getElementById("loading").textContent = "Lỗi tải dữ liệu: " + (err && err.message || err);
+      })
+      .getTagSuggestionData();
+  </script>
+</body>
+</html>

@@ -23,38 +23,6 @@
     <label>Đến ngày:</label>
     <input type="date" id="dateEnd">
     <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #ddd;">
-      <label style="margin-bottom: 8px;">Khoảng BTVN Azota (Buổi / Tháng / Năm):</label>
-      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-        <div style="flex: 1; min-width: 80px;">
-          <label style="font-size: 0.8em; color: #666;">Buổi đầu</label>
-          <input type="number" id="buoiStart" min="1" max="99" placeholder="1">
-        </div>
-        <div style="flex: 1; min-width: 80px;">
-          <label style="font-size: 0.8em; color: #666;">Tháng đầu</label>
-          <input type="number" id="thangStart" min="1" max="12" placeholder="3">
-        </div>
-        <div style="flex: 1; min-width: 80px;">
-          <label style="font-size: 0.8em; color: #666;">Năm đầu</label>
-          <input type="number" id="namStart" min="2020" max="2030" placeholder="2026">
-        </div>
-      </div>
-      <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px;">
-        <div style="flex: 1; min-width: 80px;">
-          <label style="font-size: 0.8em; color: #666;">Buổi cuối</label>
-          <input type="number" id="buoiEnd" min="1" max="99" placeholder="5">
-        </div>
-        <div style="flex: 1; min-width: 80px;">
-          <label style="font-size: 0.8em; color: #666;">Tháng cuối</label>
-          <input type="number" id="thangEnd" min="1" max="12" placeholder="3">
-        </div>
-        <div style="flex: 1; min-width: 80px;">
-          <label style="font-size: 0.8em; color: #666;">Năm cuối</label>
-          <input type="number" id="namEnd" min="2020" max="2030" placeholder="2026">
-        </div>
-      </div>
-      <p style="font-size: 0.75em; color: #888; margin-top: 5px;">Để trống = lấy tất cả BTVN (không filter theo bài)</p>
-    </div>
-    <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #ddd;">
       <label>So sánh với sheet (tháng trước):</label>
       <select id="compareSheet" style="width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; background: #fff;">
         <option value="">— Không so sánh —</option>
@@ -72,7 +40,24 @@
     <button id="btnRun">🚀 TẠO BÁO CÁO</button>
 
     <script>
+      var InitialPrefs = {
+        start: <?!= JSON.stringify(prefStart || '') ?>,
+        end: <?!= JSON.stringify(prefEnd || '') ?>,
+        compare: <?!= JSON.stringify(prefCompare || '') ?>,
+        attendance: <?!= JSON.stringify(prefAttendance || '') ?>
+      };
       (function() {
+        function selectIfMatch(selectId, value) {
+          if (!value) return;
+          var el = document.getElementById(selectId);
+          for (var i = 0; i < el.options.length; i++) {
+            if (el.options[i].value === value) {
+              el.selectedIndex = i;
+              return;
+            }
+          }
+        }
+
         window.onload = function() {
           google.script.run.withSuccessHandler(function(names) {
             var compareSel = document.getElementById('compareSheet');
@@ -89,18 +74,20 @@
                 attSel.appendChild(opt2);
               }
             }
+            var p = InitialPrefs || {};
+            if (p.start && p.end) {
+              document.getElementById('dateStart').value = p.start;
+              document.getElementById('dateEnd').value = p.end;
+            } else {
+              var d = new Date();
+              document.getElementById('dateEnd').valueAsDate = d;
+              var d2 = new Date(d.getTime());
+              d2.setDate(1);
+              document.getElementById('dateStart').valueAsDate = d2;
+            }
+            selectIfMatch('compareSheet', p.compare);
+            selectIfMatch('attendanceSheet', p.attendance);
           }).getSheetNamesForCompare();
-          var d = new Date();
-          document.getElementById('dateEnd').valueAsDate = d;
-          d.setDate(1);
-          document.getElementById('dateStart').valueAsDate = d;
-          var m = d.getMonth() + 1, y = d.getFullYear();
-          document.getElementById('buoiStart').value = 1;
-          document.getElementById('thangStart').value = m;
-          document.getElementById('namStart').value = y;
-          document.getElementById('buoiEnd').value = 5;
-          document.getElementById('thangEnd').value = m;
-          document.getElementById('namEnd').value = y;
         };
 
         document.getElementById('btnRun').addEventListener('click', function() {
@@ -109,16 +96,6 @@
           if (!s || !e) {
             alert('Vui lòng chọn đầy đủ ngày bắt đầu và kết thúc!');
             return;
-          }
-          var buoiS = parseInt(document.getElementById('buoiStart').value, 10);
-          var thangS = parseInt(document.getElementById('thangStart').value, 10);
-          var namS = parseInt(document.getElementById('namStart').value, 10);
-          var buoiE = parseInt(document.getElementById('buoiEnd').value, 10);
-          var thangE = parseInt(document.getElementById('thangEnd').value, 10);
-          var namE = parseInt(document.getElementById('namEnd').value, 10);
-          var btvnRange = null;
-          if (!isNaN(buoiS) && !isNaN(thangS) && !isNaN(namS) && !isNaN(buoiE) && !isNaN(thangE) && !isNaN(namE)) {
-            btvnRange = { buoiStart: buoiS, thangStart: thangS, namStart: namS, buoiEnd: buoiE, thangEnd: thangE, namEnd: namE };
           }
           var compareSheetName = document.getElementById('compareSheet').value;
           if (compareSheetName === '') compareSheetName = null;
@@ -130,9 +107,18 @@
           btn.innerText = '⏳ Đang tạo báo cáo...';
           loader.style.display = 'block';
 
+          var cmp = compareSheetName || '';
+          var att = attendanceSheetName || '';
           google.script.run
             .withSuccessHandler(function() {
-              google.script.host.close();
+              google.script.run
+                .withSuccessHandler(function() {
+                  google.script.host.close();
+                })
+                .withFailureHandler(function() {
+                  google.script.host.close();
+                })
+                .saveReportDialogPrefs(s, e, cmp, att);
             })
             .withFailureHandler(function(err) {
               var msg = (err && err.message) ? err.message : String(err);
@@ -141,7 +127,7 @@
               btn.innerText = '🚀 THỬ LẠI';
               loader.style.display = 'none';
             })
-            .generateRangeReport(s, e, btvnRange, compareSheetName, attendanceSheetName);
+            .generateRangeReport(s, e, compareSheetName, attendanceSheetName);
         });
       })();
     </script>

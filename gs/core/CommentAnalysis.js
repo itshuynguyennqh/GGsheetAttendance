@@ -2,11 +2,7 @@
 // PHÂN TÍCH NHẬN XÉT VÀ MÃ HV
 // ======================================================
 
-/**
- * Phân tích nhận xét để tìm lỗi BTVN, từ vựng, ý thức.
- * @return {{btvn: boolean, vocab: boolean, attitude: boolean}}
- */
-function analyzeCommentText(text) {
+function _analyzeCommentTextLegacy(text) {
   if (!text) return {btvn: false, vocab: false, attitude: false};
   var str = String(text).toLowerCase();
   return {
@@ -16,13 +12,7 @@ function analyzeCommentText(text) {
   };
 }
 
-/**
- * Phân tích nhận xét và trả về các cụm từ đã match (để bôi đen).
- * Trả về chuỗi thực tế trong text (giữ nguyên hoa/thường).
- * @param {string} text - Nội dung nhận xét
- * @return {{attitude: {matched: boolean, phrases: string[]}, vocab: {matched: boolean, phrases: string[]}}}
- */
-function analyzeCommentTextWithPhrases(text) {
+function _analyzeCommentTextWithPhrasesLegacy(text) {
   var result = { attitude: { matched: false, phrases: [] }, vocab: { matched: false, phrases: [] } };
   if (!text || typeof text !== "string") return result;
   var str = String(text);
@@ -50,10 +40,7 @@ function analyzeCommentTextWithPhrases(text) {
   return result;
 }
 
-/**
- * Từ nhận xét raw trả về cụm ngắn cho thái độ
- */
-function commentToAttitudePhrase(commentStr) {
+function _commentToAttitudePhraseLegacy(commentStr) {
   if (!commentStr) return "";
   var str = String(commentStr).toLowerCase();
   if (str.indexOf("muộn") >= 0) return "đi muộn";
@@ -69,17 +56,19 @@ function commentToAttitudePhrase(commentStr) {
   return "chưa tập trung";
 }
 
-/**
- * Kiểm tra nhận xét có phải thuần túy BTVN Azota (không đưa vào phần buổi cần lưu ý)
- */
-function isCommentOnlyBTVNAzota(commentStr) {
-  if (!commentStr || commentStr === "" || commentStr.toLowerCase() === "đủ") return false;
-  var c = commentStr.toLowerCase();
-  if (c.indexOf("chưa làm btvn azota") >= 0) return true;
-  if (c.indexOf("đã làm bài tốt với") >= 0) return true;
-  if (c.indexOf("đã làm bài ở mức điểm khá") >= 0) return true;
-  if (c.indexOf("làm chưa đạt yêu cầu") >= 0) return true;
-  return false;
+function analyzeCommentText(text, tags) {
+  if (tags && tags.length > 0) return analyzeCommentWithTags(text, tags);
+  return _analyzeCommentTextLegacy(text);
+}
+
+function analyzeCommentTextWithPhrases(text, tags) {
+  if (tags && tags.length > 0) return analyzeCommentWithTagsPhrases(text, tags);
+  return _analyzeCommentTextWithPhrasesLegacy(text);
+}
+
+function commentToAttitudePhrase(commentStr, tags) {
+  if (tags && tags.length > 0) return commentToAttitudePhraseFromTags(commentStr, tags);
+  return _commentToAttitudePhraseLegacy(commentStr);
 }
 
 /**

@@ -6,7 +6,7 @@ function processAttendanceExport(startRow, endRow, sessionNumber, selectedColumn
   if (!destSheet) throw new Error("Không tìm thấy sheet 'BaoCao'!");
 
   // 1. Cấu hình màu mới theo yêu cầu
-  const TARGET_COLOR = "#6aa84f"; 
+  const TARGET_COLORS = ["#6aa84f", "#a4b031"];
 
   // Xác định cột của buổi
   let colIndex = -1;
@@ -39,7 +39,7 @@ function processAttendanceExport(startRow, endRow, sessionNumber, selectedColumn
     let cellColor = backgrounds[i][0].toLowerCase();
     
     var valUpper = cellValue.toString().toUpperCase().trim();
-    if ((valUpper === "X" || valUpper === "M") && cellColor === TARGET_COLOR) {
+    if ((valUpper === "X" || valUpper === "M") && TARGET_COLORS.includes(cellColor)) {
       extractedData.push({
         ma: values[i][0],
         hoTen: values[i][1],
@@ -49,7 +49,7 @@ function processAttendanceExport(startRow, endRow, sessionNumber, selectedColumn
     }
   }
 
-  if (extractedData.length === 0) return "Không tìm thấy dữ liệu khớp màu #6aa84f.";
+  if (extractedData.length === 0) return "Không tìm thấy dữ liệu khớp màu #6aa84f hoặc #a4b031.";
 
   // Sắp xếp theo Tên
   extractedData.sort((a, b) => a.ten.localeCompare(b.ten, 'vi'));
@@ -74,13 +74,14 @@ function processAttendanceExport(startRow, endRow, sessionNumber, selectedColumn
   // Tạo dữ liệu với công thức động cho từng dòng
   let finalRows = extractedData.map((item, index) => {
     const rowNum = targetRow + index;
-    const formula = `=IFERROR( XLOOKUP(D${rowNum};INDIRECT(CONCATENATE("'"; REPLACE(INDEX(SPLIT(B${rowNum};"-"); 1; 1);1;1;"Tháng "); "'"; "!$A$2:$A371"));XLOOKUP(REPLACE( INDEX(SPLIT(B${rowNum};"-"); 1; 2); 1; 1; "Buổi ");INDIRECT(CONCATENATE("'"; REPLACE(INDEX(SPLIT(B${rowNum};"-"); 1; 1);1;1;"Tháng "); "'"; "!$E$1:$N$1"));INDIRECT(CONCATENATE("'"; REPLACE(INDEX(SPLIT(B${rowNum};"-"); 1; 1);1;1;"Tháng "); "'"; "!$E$2:$N371")); "")))`;
+    const attendance_formula = `=IFERROR( XLOOKUP(D${rowNum};INDIRECT(CONCATENATE("'"; REPLACE(INDEX(SPLIT(B${rowNum};"-"); 1; 1);1;1;"Tháng "); "'"; "!$A$2:$A371"));XLOOKUP(REPLACE( INDEX(SPLIT(B${rowNum};"-"); 1; 2); 1; 1; "Buổi ");INDIRECT(CONCATENATE("'"; REPLACE(INDEX(SPLIT(B${rowNum};"-"); 1; 1);1;1;"Tháng "); "'"; "!$E$1:$N$1"));INDIRECT(CONCATENATE("'"; REPLACE(INDEX(SPLIT(B${rowNum};"-"); 1; 1);1;1;"Tháng "); "'"; "!$E$2:$N371")); "")))`;
+    const last_attendance_formula = `=if(ISBLANK( D${rowNum});"";  XLOOKUP(D${rowNum}; INDIRECT(CONCATENATE( "D2:D"; ROW(D${rowNum})-1));INDIRECT(CONCATENATE( "I2:J"; ROW(D${rowNum})-1));"nghỉ";0;-1) )`;
     return [
-      today, sessionId, formula, item.ma, item.hoTen, item.ten, item.lop
+      today, sessionId, attendance_formula, item.ma, item.hoTen, item.ten, item.lop, "", "", "", last_attendance_formula
     ];
   });
 
-  const targetRange = destSheet.getRange(targetRow, 1, finalRows.length, 7);
+  const targetRange = destSheet.getRange(targetRow, 1, finalRows.length, 11);
   targetRange.setValues(finalRows);
   
   // 4. Chuyển màn hình đến nội dung vừa dán

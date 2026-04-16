@@ -64,8 +64,10 @@ function listAvailableGeminiModels() {
 /** Gợi ý model (id API, không có tiền tố models/) */
 var GEMINI_MODEL_PRESETS = [
   { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash (mặc định, nhanh)" },
+  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
   { id: "gemini-2.5-flash-preview", label: "Gemini 2.5 Flash (preview)" },
   { id: "gemini-3.1-flash-lite-preview", label: "Gemini 3.1 Flash Lite (preview)" },
+  { id: "gemma-4-31b-it", label: "Gemma 4 31B (text + vision)" },
   { id: "gemma-3-27b-it", label: "Gemma 3 27B (vision + text)" },
   { id: "gemini-1.5-flash", label: "Gemini 1.5 Flash" },
   { id: "gemini-1.5-pro", label: "Gemini 1.5 Pro" }

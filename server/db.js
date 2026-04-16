@@ -1,4 +1,4 @@
-const Database = require('better-sqlite3');
+﻿const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
@@ -15,7 +15,7 @@ db.pragma('foreign_keys = ON');
 
 function initSchema() {
   db.exec(`
-    -- Khóa học (lớp lớn, cha của lớp con)
+    -- KhÃ³a há»c (lá»›p lá»›n, cha cá»§a lá»›p con)
     CREATE TABLE IF NOT EXISTS courses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -25,7 +25,7 @@ function initSchema() {
       lastEditBy TEXT
     );
 
-    -- Lớp con (thuộc khóa học)
+    -- Lá»›p con (thuá»™c khÃ³a há»c)
     CREATE TABLE IF NOT EXISTS classes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       courseId INTEGER NOT NULL REFERENCES courses(id),
@@ -36,14 +36,14 @@ function initSchema() {
       lastEditBy TEXT
     );
 
-    -- Học sinh
+    -- Há»c sinh
     CREATE TABLE IF NOT EXISTS students (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       maHV TEXT NOT NULL UNIQUE,
       hoTen TEXT NOT NULL,
       ten TEXT,
       classId INTEGER NOT NULL REFERENCES classes(id),
-      status TEXT DEFAULT 'đi học',
+      status TEXT DEFAULT 'Ä‘i há»c',
       namSinh INTEGER,
       soDTRieng TEXT,
       soDTPhuHuynh TEXT,
@@ -59,7 +59,7 @@ function initSchema() {
       lastEditBy TEXT
     );
 
-    -- Lịch sử tình trạng học sinh
+    -- Lá»‹ch sá»­ tÃ¬nh tráº¡ng há»c sinh
     CREATE TABLE IF NOT EXISTS student_status_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       studentId INTEGER NOT NULL REFERENCES students(id),
@@ -71,7 +71,7 @@ function initSchema() {
       lastEditBy TEXT
     );
 
-    -- Lịch sử chuyển lớp
+    -- Lá»‹ch sá»­ chuyá»ƒn lá»›p
     CREATE TABLE IF NOT EXISTS student_class_transfer_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       studentId INTEGER NOT NULL REFERENCES students(id),
@@ -86,7 +86,7 @@ function initSchema() {
       lastEditBy TEXT
     );
 
-    -- Lịch lặp lại mỗi tuần
+    -- Lá»‹ch láº·p láº¡i má»—i tuáº§n
     CREATE TABLE IF NOT EXISTS class_schedule_template (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       classId INTEGER NOT NULL REFERENCES classes(id),
@@ -99,7 +99,7 @@ function initSchema() {
       lastEditBy TEXT
     );
 
-    -- Lịch sử thay đổi lịch học
+    -- Lá»‹ch sá»­ thay Ä‘á»•i lá»‹ch há»c
     CREATE TABLE IF NOT EXISTS class_schedule_template_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       classId INTEGER NOT NULL REFERENCES classes(id),
@@ -113,7 +113,7 @@ function initSchema() {
       note TEXT
     );
 
-    -- Ca học
+    -- Ca há»c
     CREATE TABLE IF NOT EXISTS sessions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       classId INTEGER NOT NULL REFERENCES classes(id),
@@ -130,7 +130,7 @@ function initSchema() {
       UNIQUE(classId, ngayHoc, startTime)
     );
 
-    -- Điểm danh
+    -- Äiá»ƒm danh
     CREATE TABLE IF NOT EXISTS attendance (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       studentId INTEGER NOT NULL REFERENCES students(id),
@@ -144,7 +144,7 @@ function initSchema() {
       UNIQUE(studentId, sessionId)
     );
 
-    -- Báo cáo buổi - files
+    -- BÃ¡o cÃ¡o buá»•i - files
     CREATE TABLE IF NOT EXISTS session_report_files (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sessionId INTEGER NOT NULL REFERENCES sessions(id),
@@ -158,7 +158,7 @@ function initSchema() {
       lastEditBy TEXT
     );
 
-    -- Báo cáo buổi - học sinh (điểm, Azota, nhận xét)
+    -- BÃ¡o cÃ¡o buá»•i - há»c sinh (Ä‘iá»ƒm, Azota, nháº­n xÃ©t)
     CREATE TABLE IF NOT EXISTS session_report_student (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sessionId INTEGER NOT NULL REFERENCES sessions(id),
@@ -172,7 +172,7 @@ function initSchema() {
       UNIQUE(sessionId, studentId)
     );
 
-    -- Sơ đồ chỗ ngồi theo ca học (7x4 = 28 ghế)
+    -- SÆ¡ Ä‘á»“ chá»— ngá»“i theo ca há»c (7x4 = 28 gháº¿)
     CREATE TABLE IF NOT EXISTS session_seat_map (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sessionId INTEGER NOT NULL REFERENCES sessions(id),
@@ -263,12 +263,57 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_sessions_lastEditAt ON sessions(lastEditAt);
     CREATE INDEX IF NOT EXISTS idx_session_seat_map_session ON session_seat_map(sessionId);
     CREATE INDEX IF NOT EXISTS idx_session_seat_map_student ON session_seat_map(studentId);
+
+    -- HV lop khach dang ky tham gia ca
+    CREATE TABLE IF NOT EXISTS session_guest_students (
+      sessionId INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      studentId INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+      createdAt TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (sessionId, studentId)
+    );
+    CREATE INDEX IF NOT EXISTS idx_session_guest_session ON session_guest_students(sessionId);
+    CREATE INDEX IF NOT EXISTS idx_session_guest_student ON session_guest_students(studentId);
+
+    CREATE TABLE IF NOT EXISTS class_layout_config (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      classId INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+      rows INTEGER NOT NULL DEFAULT 4,
+      cols INTEGER NOT NULL DEFAULT 7,
+      disabledSeats TEXT DEFAULT '[]',
+      createdAt TEXT DEFAULT (datetime('now')),
+      updatedAt TEXT DEFAULT (datetime('now')),
+      UNIQUE(classId)
+    );
+
+    CREATE TABLE IF NOT EXISTS note_tags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      label TEXT NOT NULL,
+      type TEXT DEFAULT 'neutral' CHECK(type IN ('positive','negative','neutral')),
+      icon TEXT,
+      sortOrder INTEGER DEFAULT 0,
+      isActive INTEGER DEFAULT 1,
+      createdAt TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS student_session_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      studentId INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+      sessionId INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      tagId INTEGER REFERENCES note_tags(id),
+      content TEXT,
+      type TEXT DEFAULT 'neutral' CHECK(type IN ('positive','negative','neutral')),
+      createdAt TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_student_notes_student ON student_session_notes(studentId);
+    CREATE INDEX IF NOT EXISTS idx_student_notes_session ON student_session_notes(sessionId);
+    CREATE INDEX IF NOT EXISTS idx_student_notes_student_session ON student_session_notes(studentId, sessionId);
   `);
   migrateSessionsThangYYYYMM();
   console.log('[db] Schema initialized');
 }
 
-/** Chuẩn hóa sessions.thang → YYYY.MM (và đổi bản ghi cũ MM.YYYY) */
+/** Chuáº©n hÃ³a sessions.thang â†’ YYYY.MM (vÃ  Ä‘á»•i báº£n ghi cÅ© MM.YYYY) */
 function migrateSessionsThangYYYYMM() {
   try {
     const { normalizeThang } = require('./routes/attendanceImportHelpers');
@@ -281,7 +326,7 @@ function migrateSessionsThangYYYYMM() {
         updated++;
       }
     }
-    if (updated) console.log('[db] sessions.thang → YYYY.MM:', updated, 'rows');
+    if (updated) console.log('[db] sessions.thang â†’ YYYY.MM:', updated, 'rows');
   } catch (e) {
     console.warn('[db] migrateSessionsThangYYYYMM:', e.message);
   }

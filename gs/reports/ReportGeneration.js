@@ -84,7 +84,7 @@ function buildMessageRichText(msg, boldPhrases) {
 }
 
 /**
- * Đánh giá 4 tiêu chí: diemTB, thaiDo, btvnAzota, chepPhat.
+ * Đánh giá tiêu chí: diemTB, btvn, thaiDo, chepPhat.
  * Mỗi trường: 'ok' (tốt), 'nho' (lỗi nhỏ), 'xau' (chưa tốt rõ).
  */
 function evaluateIndicators(s, avg) {
@@ -97,22 +97,11 @@ function evaluateIndicators(s, avg) {
     else if (avgNum > 8.5) diemTB = "ok";
     else diemTB = "xau";
   }
+  var btvn = s.errors.btvn === 0 ? "ok" : (s.errors.btvn === 1 ? "nho" : "xau");
   var thaiDo = s.errors.att === 0 ? "ok" : (s.errors.att === 1 ? "nho" : "xau");
-  var btvnAzota = "ok";
-  if (s.btvnAzota && s.btvnAzota.total > 0) {
-    var completed = s.btvnAzota.completed || 0;
-    var total = s.btvnAzota.total;
-    var missing = total - completed;
-    if (missing === 0) btvnAzota = "ok";
-    else if (missing <= 2) btvnAzota = "nho";
-    else btvnAzota = "xau";
-  }
-  if (s.btvnAzota.total === 0 && s.errors.btvn > 0) {
-    btvnAzota = s.errors.btvn <= 2 ? "nho" : "xau";
-  }
   var chepPhat = "ok";
   if (s.errors.vocab >= 1 || (s.chepPhatList && s.chepPhatList.length > 0)) chepPhat = "xau";
-  return { diemTB: diemTB, thaiDo: thaiDo, btvnAzota: btvnAzota, chepPhat: chepPhat };
+  return { diemTB: diemTB, btvn: btvn, thaiDo: thaiDo, chepPhat: chepPhat };
 }
 
 /**
@@ -124,9 +113,9 @@ function getSheetNamesForCompare() {
 }
 
 /**
- * Đọc dữ liệu báo cáo tháng trước từ sheet. Cột J, L (TC Thái độ, TC Chép phạt) chỉ lấy dòng đầu.
+ * Đọc dữ liệu báo cáo tháng trước từ sheet. TC Thái độ, TC Chép phạt chỉ lấy dòng đầu.
  * @param {string} sheetName - Tên sheet
- * @return {Object} { "HV-000123": { diemTB, chiTietDiem, loi, chiSoBTVN, nhom, tcDiemTB, tcThaiDo, tcBTVNAzota, tcChepPhat }, ... }
+ * @return {Object} { "HV-000123": { diemTB, chiTietDiem, loi, nhom, tcDiemTB, tcThaiDo, tcChepPhat }, ... }
  */
 function _findColByHeader(headerRow, name) {
   for (var i = 0; i < headerRow.length; i++) {
@@ -159,13 +148,12 @@ function loadPreviousMonthReport(sheetName) {
     diemTB: _findColByHeader(h, "Điểm TB") >= 0 ? _findColByHeader(h, "Điểm TB") : 3,
     chiTietDiem: _findColByHeader(h, "Chi tiết điểm") >= 0 ? _findColByHeader(h, "Chi tiết điểm") : 4,
     loi: _findColByHeader(h, "Lỗi (BTVN/TV/YT)") >= 0 ? _findColByHeader(h, "Lỗi (BTVN/TV/YT)") : 5,
-    chiSoBTVN: _findColByHeader(h, "Chỉ số BTVN Azota") >= 0 ? _findColByHeader(h, "Chỉ số BTVN Azota") : 6,
     soBuoiNghi: _findColByHeader(h, "Số buổi nghỉ"),
-    nhom: _findColByHeader(h, "Nhóm") >= 0 ? _findColByHeader(h, "Nhóm") : 7,
-    tcDiemTB: _findColByHeader(h, "TC Điểm TB") >= 0 ? _findColByHeader(h, "TC Điểm TB") : 8,
-    tcThaiDo: _findColByHeader(h, "TC Thái độ") >= 0 ? _findColByHeader(h, "TC Thái độ") : 9,
-    tcBTVNAzota: _findColByHeader(h, "TC BTVN Azota") >= 0 ? _findColByHeader(h, "TC BTVN Azota") : 10,
-    tcChepPhat: _findColByHeader(h, "TC Chép phạt") >= 0 ? _findColByHeader(h, "TC Chép phạt") : 11
+    nhom: _findColByHeader(h, "Nhóm") >= 0 ? _findColByHeader(h, "Nhóm") : 6,
+    tcDiemTB: _findColByHeader(h, "TC Điểm TB") >= 0 ? _findColByHeader(h, "TC Điểm TB") : 7,
+    tcBTVN: _findColByHeader(h, "TC BTVN"),
+    tcThaiDo: _findColByHeader(h, "TC Thái độ") >= 0 ? _findColByHeader(h, "TC Thái độ") : 8,
+    tcChepPhat: _findColByHeader(h, "TC Chép phạt") >= 0 ? _findColByHeader(h, "TC Chép phạt") : 9
   };
   for (var i = 1; i < values.length; i++) {
     var row = values[i];
@@ -173,6 +161,7 @@ function loadPreviousMonthReport(sheetName) {
     var id = row[col.maHV];
     if (!id || String(id).trim() === "") continue;
     var norm = normalizeHVCode(String(id).trim());
+    var tcBTVNVal = (col.tcBTVN >= 0 && col.tcBTVN < rowD.length) ? _prevCellStr(rowD[col.tcBTVN]) : "";
     var tcThaiVal = _prevCellStr(rowD[col.tcThaiDo]);
     var tcPhatVal = _prevCellStr(rowD[col.tcChepPhat]);
     var soBuoiNghiVal = null;
@@ -184,12 +173,11 @@ function loadPreviousMonthReport(sheetName) {
       diemTB: _prevCellStr(rowD[col.diemTB]),
       chiTietDiem: _prevCellStr(rowD[col.chiTietDiem]),
       loi: _prevCellStr(rowD[col.loi]),
-      chiSoBTVN: _prevCellStr(rowD[col.chiSoBTVN]),
       soBuoiNghi: soBuoiNghiVal,
       nhom: _prevCellStr(rowD[col.nhom]),
       tcDiemTB: _prevCellStr(rowD[col.tcDiemTB]),
+      tcBTVN: tcBTVNVal !== "" ? tcBTVNVal.split("\n")[0].trim() : "",
       tcThaiDo: tcThaiVal !== "" ? tcThaiVal.split("\n")[0].trim() : "",
-      tcBTVNAzota: _prevCellStr(rowD[col.tcBTVNAzota]),
       tcChepPhat: tcPhatVal !== "" ? tcPhatVal.split("\n")[0].trim() : ""
     };
   }
@@ -257,23 +245,8 @@ function _parseLoiTotal(s) {
 }
 
 /**
- * Parse tỉ lệ BTVN Azota từ "x/y (z%)" -> z hoặc x/y
- */
-function _parseBTVNAzotaRate(s) {
-  if (!s || typeof s !== "string") return null;
-  var m = String(s).match(/\((\d+(?:[.,]\d+)?)\s*%\)/);
-  if (m) return parseFloat(m[1].replace(",", "."));
-  var mm = String(s).match(/(\d+)\s*\/\s*(\d+)/);
-  if (mm) {
-    var den = parseInt(mm[2], 10);
-    return den > 0 ? (parseInt(mm[1], 10) / den * 100) : null;
-  }
-  return null;
-}
-
-/**
  * Tính xu hướng: Cải thiện / Sa sút / Ổn định / —
- * 6 phiếu bầu (bỏ Nhóm): Điểm TB, Thái độ, BTVN Azota, Chép phạt, Tổng lỗi, Chuyên cần.
+ * 5 phiếu bầu: Điểm TB, Thái độ, Chép phạt, Tổng lỗi, Chuyên cần.
  * Trả về { result, improve, decline, reasonsImprove, reasonsDecline }.
  */
 function computeXuHuong(prev, current) {
@@ -298,16 +271,7 @@ function computeXuHuong(prev, current) {
     else if (rThaiCur === 2) { improve += 0.5; reasonsImprove.push("Thái độ duy trì ok"); }
   }
 
-  // 3. BTVN Azota
-  var pBtvn = _parseBTVNAzotaRate(prev.chiSoBTVN);
-  var cBtvn = current.btvnAzotaPct;
-  if (pBtvn !== null && !isNaN(pBtvn) && cBtvn !== null && !isNaN(cBtvn)) {
-    if (cBtvn > pBtvn) { improve += 1; reasonsImprove.push("BTVN Azota tăng"); }
-    else if (cBtvn < pBtvn) { decline += 1; reasonsDecline.push("BTVN Azota giảm"); }
-    else if (cBtvn > 90) { improve += 0.5; reasonsImprove.push("BTVN Azota duy trì >90%"); }
-  }
-
-  // 4. Chép phạt
+  // 3. Chép phạt
   var rPhatPrev = _rankIndicator(prev.tcChepPhat);
   var rPhatCur = _rankIndicator(current.tcChepPhat);
   if (rPhatPrev >= 0 && rPhatCur >= 0) {
@@ -316,7 +280,7 @@ function computeXuHuong(prev, current) {
     else if (rPhatCur === 2) { improve += 0.5; reasonsImprove.push("Chép phạt duy trì ok"); }
   }
 
-  // 5. Tổng lỗi
+  // 4. Tổng lỗi
   var pLoi = _parseLoiTotal(prev.loi);
   var cLoi = current.loiTotal;
   if (pLoi !== null && cLoi !== null) {
@@ -325,7 +289,7 @@ function computeXuHuong(prev, current) {
     else if (cLoi === 0) { improve += 0.5; reasonsImprove.push("Duy trì 0 lỗi"); }
   }
 
-  // 6. Chuyên cần
+  // 5. Chuyên cần
   var pNghi = prev.soBuoiNghi;
   var cNghi = current.soBuoiNghi;
   if (typeof pNghi === "number" && typeof cNghi === "number") {
@@ -368,7 +332,7 @@ function classifyStudent(s, avg) {
   var badCount = 0;
   var hasNho = false;
   var hasXau = false;
-  ["diemTB", "thaiDo", "btvnAzota", "chepPhat"].forEach(function(k) {
+  ["diemTB", "thaiDo", "chepPhat"].forEach(function(k) {
     if (ind[k] === "nho") { badCount++; hasNho = true; }
     if (ind[k] === "xau") { badCount++; hasXau = true; }
   });
@@ -378,7 +342,7 @@ function classifyStudent(s, avg) {
   return 2;
 }
 
-function generateRangeReport(startStr, endStr, btvnRange, compareSheetName, attendanceSheetName) {
+function generateRangeReport(startStr, endStr, compareSheetName, attendanceSheetName) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName('BaoCao');
   if (!sheet) {
@@ -394,6 +358,42 @@ function generateRangeReport(startStr, endStr, btvnRange, compareSheetName, atte
   startDate.setHours(0, 0, 0, 0);
   var endDate = new Date(endStr);
   endDate.setHours(23, 59, 59, 999);
+
+  var tags = loadTagConfig();
+  if (!tags || tags.length === 0) {
+    seedDefaultTags();
+    tags = loadTagConfig();
+  }
+
+  var uniqueComments = {};
+  for (var ci = 1; ci < data.length; ci++) {
+    var cDateVal = parseDate(data[ci][0]);
+    if (!cDateVal || isNaN(cDateVal.getTime())) continue;
+    if (cDateVal < startDate || cDateVal > endDate) continue;
+    var cComment = data[ci][8];
+    var cCommentStr = cComment ? String(cComment).trim() : "";
+    if (cCommentStr && cCommentStr.toLowerCase() !== "đủ") {
+      uniqueComments[cCommentStr] = true;
+    }
+  }
+  var uniqueList = Object.keys(uniqueComments);
+
+  var _pendingTagSuggestions = false;
+  var uncovered = findUncoveredComments(uniqueList, tags);
+  if (uncovered.length > 0) {
+    try {
+      Logger.log("[Report] Calling Gemini for " + uncovered.length + " uncovered comments...");
+      var suggestions = callGeminiForTagAnalysis(uncovered, tags);
+      if (suggestions && suggestions.length > 0) {
+        storeTagSuggestions(suggestions);
+        _pendingTagSuggestions = true;
+        Logger.log("[Report] Stored " + suggestions.length + " tag suggestions (dialog shown after report)");
+      }
+    } catch (e) {
+      Logger.log("[Report] Gemini tag analysis error: " + e.toString());
+    }
+  }
+
   var students = {};
   for (var i = 1; i < data.length; i++) {
     var row = data[i];
@@ -412,9 +412,8 @@ function generateRangeReport(startStr, endStr, btvnRange, compareSheetName, atte
       students[id] = {
         name: name, class: lop, scores: [], details: [],
         errors: {btvn: 0, vocab: 0, att: 0},
-        btvnAzota: {total: 0, completed: 0},
         attitudePhrases: [], chepPhatList: [],
-        thaiDoMatchedLines: [], chepPhatMatchedLines: [], unrecognizedLines: []
+        btvnMatchedLines: [], thaiDoMatchedLines: [], chepPhatMatchedLines: [], unrecognizedLines: []
       };
     }
     var scoreStr = score ? String(score).trim() : "";
@@ -432,12 +431,19 @@ function generateRangeReport(startStr, endStr, btvnRange, compareSheetName, atte
     if ((attUpper === "X" || attUpper === "M") && commentStr === "" && chepPhatStr === "") {
       commentStr = "Đủ";
     }
-    var ana = analyzeCommentText(commentStr);
-    var anaPhrases = analyzeCommentTextWithPhrases(commentStr);
-    if (ana.btvn) students[id].errors.btvn++;
+    var ana = analyzeCommentText(commentStr, tags);
+    var anaPhrases = analyzeCommentTextWithPhrases(commentStr, tags);
+    if (ana.btvn) {
+      students[id].errors.btvn++;
+      students[id].btvnMatchedLines.push({
+        date: formatDateVN(dateVal),
+        text: commentStr,
+        phrases: (anaPhrases.btvn && anaPhrases.btvn.phrases) ? anaPhrases.btvn.phrases : []
+      });
+    }
     if (ana.attitude) {
       students[id].errors.att++;
-      var attPhrase = commentToAttitudePhrase(commentStr);
+      var attPhrase = commentToAttitudePhrase(commentStr, tags);
       if (attPhrase) students[id].attitudePhrases.push(attPhrase);
       students[id].thaiDoMatchedLines.push({
         date: formatDateVN(dateVal),
@@ -461,17 +467,15 @@ function generateRangeReport(startStr, endStr, btvnRange, compareSheetName, atte
         phrases: anaPhrases.vocab.phrases
       });
     }
-    if (commentStr !== "" && commentStr.toLowerCase() !== "đủ" && !ana.attitude && !ana.vocab && chepPhatStr === "") {
+    if (commentStr !== "" && commentStr.toLowerCase() !== "đủ" && !ana.btvn && !ana.attitude && !ana.vocab && chepPhatStr === "") {
       students[id].unrecognizedLines.push({ date: formatDateVN(dateVal), comment: commentStr });
     }
-    if (!isCommentOnlyBTVNAzota(commentStr)) {
-      var detailParts = [];
-      if (scoreStr !== "") detailParts.push("Điểm: " + scoreStr);
-      if (commentStr !== "" && commentStr.toLowerCase() !== "đủ") detailParts.push(commentStr);
-      if (chepPhatStr !== "") detailParts.push("Chép phạt: " + chepPhatStr);
-      if (detailParts.length > 0) {
-        students[id].details.push("- " + formatDateVN(dateVal) + ": " + detailParts.join(" | "));
-      }
+    var detailParts = [];
+    if (scoreStr !== "") detailParts.push("Điểm: " + scoreStr);
+    if (commentStr !== "" && commentStr.toLowerCase() !== "đủ") detailParts.push(commentStr);
+    if (chepPhatStr !== "") detailParts.push("Chép phạt: " + chepPhatStr);
+    if (detailParts.length > 0) {
+      students[id].details.push("- " + formatDateVN(dateVal) + ": " + detailParts.join(" | "));
     }
   }
   var prevData = null;
@@ -482,19 +486,8 @@ function generateRangeReport(startStr, endStr, btvnRange, compareSheetName, atte
   if (attendanceSheetName && String(attendanceSheetName).trim() !== "") {
     attendanceData = loadAttendanceData(attendanceSheetName);
   }
-  var btvnAzotaData = loadBTVNAzotaFromExternalSheet(btvnRange || null);
-  var btvnAzotaDataNormalized = {};
-  for (var btvnKey in btvnAzotaData) {
-    var normalized = normalizeHVCode(btvnKey);
-    if (!btvnAzotaDataNormalized[normalized]) btvnAzotaDataNormalized[normalized] = [];
-    btvnAzotaDataNormalized[normalized].push({ originalKey: btvnKey, data: btvnAzotaData[btvnKey] });
-  }
   for (var hvKey in students) {
     var normalizedHvKey = normalizeHVCode(hvKey);
-    var matchedBtvn = btvnAzotaDataNormalized[normalizedHvKey];
-    if (matchedBtvn && matchedBtvn.length > 0) {
-      students[hvKey].btvnAzota = matchedBtvn[0].data;
-    }
     if (attendanceData && attendanceData[normalizedHvKey]) {
       students[hvKey].attendance = attendanceData[normalizedHvKey];
     } else {
@@ -503,9 +496,10 @@ function generateRangeReport(startStr, endStr, btvnRange, compareSheetName, atte
   }
   var rangeDateStr = formatDateVN(startDate) + " - " + formatDateVN(endDate);
   var monthLabel = getMonthLabel(startDate);
-  var baseHeaders = ["Mã HV", "Họ Tên", "Lớp", "Điểm TB", "Chi tiết điểm", "Lỗi (BTVN/TV/YT)", "Chỉ số BTVN Azota", "Số buổi đi", "Số buổi nghỉ", "Nhóm", "TC Điểm TB", "TC Thái độ", "TC BTVN Azota", "TC Chép phạt", "Nhận xét chưa nhận diện", "Nội dung tin nhắn"];
-  var prevHeaders = prevData ? ["Điểm TB (T.trước)", "Chi tiết điểm (T.trước)", "Lỗi (T.trước)", "Chỉ số BTVN Azota (T.trước)", "Nhóm (T.trước)", "TC Điểm TB (T.trước)", "TC Thái độ (T.trước)", "TC BTVN Azota (T.trước)", "TC Chép phạt (T.trước)", "Xu hướng", "Chi tiết xu hướng"] : [];
+  var baseHeaders = ["Mã HV", "Họ Tên", "Lớp", "Điểm TB", "Chi tiết điểm", "Lỗi (BTVN/TV/YT)", "Số buổi đi", "Số buổi nghỉ", "Nhóm", "TC Điểm TB", "TC BTVN", "TC Thái độ", "TC Chép phạt", "Nhận xét chưa nhận diện", "Nội dung tin nhắn"];
+  var prevHeaders = prevData ? ["Điểm TB (T.trước)", "Chi tiết điểm (T.trước)", "Lỗi (T.trước)", "Nhóm (T.trước)", "TC Điểm TB (T.trước)", "TC BTVN (T.trước)", "TC Thái độ (T.trước)", "TC Chép phạt (T.trước)", "Xu hướng", "Chi tiết xu hướng"] : [];
   var out = [baseHeaders.concat(prevHeaders)];
+  var richTextBTVN = [];
   var richTextThaiDo = [];
   var richTextChepPhat = [];
   for (var key in students) {
@@ -515,16 +509,6 @@ function generateRangeReport(startStr, endStr, btvnRange, compareSheetName, atte
       var sum = s.scores.reduce(function(a, b) { return a + b; }, 0);
       avg = (sum / s.scores.length).toFixed(1);
     }
-    var btvnAzotaRate = "";
-    if (s.btvnAzota.total > 0) {
-      var rate = (s.btvnAzota.completed / s.btvnAzota.total * 100).toFixed(1);
-      btvnAzotaRate = s.btvnAzota.completed + "/" + s.btvnAzota.total + " (" + rate + "%)";
-      if (s.btvnAzota.scores && s.btvnAzota.scores.length > 0) {
-        btvnAzotaRate += " - Điểm: " + s.btvnAzota.scores.map(function(x) { return typeof x === "number" ? x.toFixed(1) : String(x); }).join(", ");
-      }
-    } else {
-      btvnAzotaRate = "N/A";
-    }
     var indicators = evaluateIndicators(s, avg);
     var group = classifyStudent(s, avg);
     var thaiDoText = (s.attitudePhrases && s.attitudePhrases.length > 0)
@@ -533,15 +517,19 @@ function generateRangeReport(startStr, endStr, btvnRange, compareSheetName, atte
     var phatText = (s.chepPhatList && s.chepPhatList.length > 0) ? s.chepPhatList.join(", ") : "";
     var opts = { indicators: indicators, thaiDo: thaiDoText, phat: phatText };
     var msg;
-    if (group === 1) msg = generateMessageGroup1(s, monthLabel, rangeDateStr, avg, btvnAzotaRate, opts);
-    else if (group === 2) msg = generateMessageGroup2(s, monthLabel, rangeDateStr, avg, btvnAzotaRate, opts);
-    else msg = generateMessageGroup3(s, monthLabel, rangeDateStr, avg, btvnAzotaRate, opts);
+    if (group === 1) msg = generateMessageGroup1(s, monthLabel, rangeDateStr, avg, opts);
+    else if (group === 2) msg = generateMessageGroup2(s, monthLabel, rangeDateStr, avg, opts);
+    else msg = generateMessageGroup3(s, monthLabel, rangeDateStr, avg, opts);
+    var btvnLabel = indicators.btvn || "ok";
     var thaiDoLabel = indicators.thaiDo || "ok";
     var chepPhatLabel = indicators.chepPhat || "ok";
+    var btvnLines = s.btvnMatchedLines || [];
     var thaiDoLines = s.thaiDoMatchedLines || [];
     var chepPhatLines = s.chepPhatMatchedLines || [];
+    richTextBTVN.push(buildEvidenceRichText(btvnLabel, btvnLines));
     richTextThaiDo.push(buildEvidenceRichText(thaiDoLabel, thaiDoLines));
     richTextChepPhat.push(buildEvidenceRichText(chepPhatLabel, chepPhatLines));
+    var btvnPlain = btvnLabel + (btvnLines.length > 0 ? "\n" + btvnLines.map(function(l) { return l.date + ": " + l.text; }).join("\n") : "");
     var thaiDoPlain = thaiDoLabel + (thaiDoLines.length > 0 ? "\n" + thaiDoLines.map(function(l) { return l.date + ": " + l.text; }).join("\n") : "");
     var chepPhatPlain = chepPhatLabel + (chepPhatLines.length > 0 ? "\n" + chepPhatLines.map(function(l) { return l.date + ": " + l.text; }).join("\n") : "");
     var unrecognizedText = (s.unrecognizedLines && s.unrecognizedLines.length > 0)
@@ -555,17 +543,16 @@ function generateRangeReport(startStr, endStr, btvnRange, compareSheetName, atte
     var rowData = [
       key, s.name, s.class, avg, s.scores.join(", "),
       s.errors.btvn + "/" + s.errors.vocab + "/" + s.errors.att,
-      btvnAzotaRate, soBuoiDi, soBuoiNghi, group,
-      indicators.diemTB, thaiDoPlain, indicators.btvnAzota, chepPhatPlain,
+      soBuoiDi, soBuoiNghi, group,
+      indicators.diemTB, btvnPlain, thaiDoPlain, chepPhatPlain,
       unrecognizedText, msg
     ];
     if (prevData) {
       var prev = prevData[normalizeHVCode(key)] || null;
-      var prevVals = prev ? [prev.diemTB, prev.chiTietDiem, prev.loi, prev.chiSoBTVN, prev.nhom, prev.tcDiemTB, prev.tcThaiDo, prev.tcBTVNAzota, prev.tcChepPhat] : ["", "", "", "", "", "", "", "", ""];
+      var prevVals = prev ? [prev.diemTB, prev.chiTietDiem, prev.loi, prev.nhom, prev.tcDiemTB, prev.tcBTVN, prev.tcThaiDo, prev.tcChepPhat] : ["", "", "", "", "", "", "", ""];
       var loiTotal = s.errors.btvn + s.errors.vocab + s.errors.att;
-      var btvnAzotaPct = s.btvnAzota.total > 0 ? (s.btvnAzota.completed / s.btvnAzota.total * 100) : null;
       var soBuoiNghiNum = (s.attendance && s.attendance.nghi != null) ? s.attendance.nghi : null;
-      var currentForXuHuong = { avg: avg, group: group, tcThaiDo: indicators.thaiDo, tcChepPhat: indicators.chepPhat, loiTotal: loiTotal, btvnAzotaPct: btvnAzotaPct, soBuoiNghi: soBuoiNghiNum };
+      var currentForXuHuong = { avg: avg, group: group, tcThaiDo: indicators.thaiDo, tcChepPhat: indicators.chepPhat, loiTotal: loiTotal, soBuoiNghi: soBuoiNghiNum };
       var xuHuong = computeXuHuong(prev, currentForXuHuong);
       var xuHuongDetail = _formatXuHuongDetail(xuHuong);
       rowData = rowData.concat(prevVals).concat(xuHuong.result, xuHuongDetail);
@@ -580,15 +567,17 @@ function generateRangeReport(startStr, endStr, btvnRange, compareSheetName, atte
     target.getRange(1, 1, out.length, out[0].length).setValues(out);
     var boldPhrases = [
       "Cần lưu ý:", "Điểm TB còn cần cải thiện", "Trên lớp con còn chưa thực sự tập trung",
-      "Về nhà con có vài buổi chưa hoàn thành BTVN Azota", "Cụ thể hôm rồi con có bị phạt:",
+      "Cụ thể hôm rồi con có bị phạt:",
       "Chị nhắc nhẹ", "Một số điểm tích cực:", "Thực sự em đang khá lo lắng",
-      "Về ý thức:", "Về bài vở:", "Giai đoạn này rất quan trọng", "Chỉ cần lưu ý nhẹ:"
+      "Về ý thức:", "Giai đoạn này rất quan trọng", "Chỉ cần lưu ý nhẹ:"
     ];
+    var colBTVN = 11;
     var colThaiDo = 12;
-    var colChepPhat = 14;
-    var colUnrecognized = 15;
-    var colMessage = 16;
+    var colChepPhat = 13;
+    var colUnrecognized = 14;
+    var colMessage = 15;
     for (var r = 1; r < out.length; r++) {
+      if (richTextBTVN[r - 1]) target.getRange(r + 1, colBTVN).setRichTextValue(richTextBTVN[r - 1]);
       if (richTextThaiDo[r - 1]) target.getRange(r + 1, colThaiDo).setRichTextValue(richTextThaiDo[r - 1]);
       if (richTextChepPhat[r - 1]) target.getRange(r + 1, colChepPhat).setRichTextValue(richTextChepPhat[r - 1]);
       var msg = out[r][colMessage - 1];
@@ -599,22 +588,29 @@ function generateRangeReport(startStr, endStr, btvnRange, compareSheetName, atte
     }
     target.getRange(1, 1, 1, out[0].length).setFontWeight("bold").setBackground("#cfe2f3");
     target.setColumnWidth(colMessage, 400);
+    target.setColumnWidth(colBTVN, 220);
     target.setColumnWidth(colThaiDo, 220);
     target.setColumnWidth(colChepPhat, 220);
     target.setColumnWidth(colUnrecognized, 220);
+    target.getRange(1, colBTVN, out.length, colBTVN).setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
     target.getRange(1, colThaiDo, out.length, colThaiDo).setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
     target.getRange(1, colChepPhat, out.length, colChepPhat).setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
     target.getRange(1, colUnrecognized, out.length, colUnrecognized).setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
     target.getRange(1, colMessage, out.length, colMessage).setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
     target.getRange("H:H").setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
-    if (prevData && out[0].length > 16) {
-      for (var c = 17; c <= out[0].length; c++) {
+    if (prevData && out[0].length > 15) {
+      for (var c = 16; c <= out[0].length; c++) {
         target.getRange(1, c, out.length, c).setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
       }
-      target.autoResizeColumns(17, out[0].length);
+      target.autoResizeColumns(16, out[0].length);
     }
-    target.autoResizeColumns(1, 7);
+    target.autoResizeColumns(1, 6);
+    Logger.log("[Report] Report written: " + (out.length - 1) + " students");
     SpreadsheetApp.getUi().alert("✅ Đã tạo báo cáo thành công!");
+    if (_pendingTagSuggestions) {
+      Logger.log("[Report] Opening tag approval dialog for pending suggestions");
+      showTagApprovalDialog();
+    }
   } else {
     SpreadsheetApp.getUi().alert("⚠️ Không tìm thấy dữ liệu phù hợp trong khoảng thời gian này!");
   }

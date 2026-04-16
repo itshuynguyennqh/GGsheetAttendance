@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
 const { db, setLastEdit } = require('../db');
 
@@ -43,13 +43,35 @@ router.get('/', (req, res) => {
       sql += ' AND s.classId = ?';
       params.push(req.query.classId);
     }
+    if (req.query.excludeClassId) {
+      sql += ' AND s.classId != ?';
+      params.push(req.query.excludeClassId);
+    }
     if (req.query.status) {
       sql += ' AND s.status = ?';
       params.push(req.query.status);
     }
-    sql += ' ORDER BY s.id';
-    const rows = db.prepare(sql).all(...params);
-    res.json(rows);
+    const q = (req.query.q || req.query.search || '').trim();
+    if (q) {
+      const like = `%${q.replace(/%/g, '\\%')}%`;
+      sql += " AND (s.hoTen LIKE ? ESCAPE '\\' OR s.ten LIKE ? ESCAPE '\\' OR s.maHV LIKE ? ESCAPE '\\')";
+      params.push(like, like, like);
+    }
+    sql += ' ORDER BY s.maHV, s.id';
+    const isSearch = !!(q || req.query.excludeClassId);
+    let lim = parseInt(req.query.limit, 10);
+    if (isSearch) {
+      if (!Number.isFinite(lim) || lim < 1) lim = 30;
+      lim = Math.min(lim, 100);
+      const rows = db.prepare(`${sql} LIMIT ?`).all(...params, lim);
+      res.json(rows);
+    } else if (Number.isFinite(lim) && lim > 0) {
+      const rows = db.prepare(`${sql} LIMIT ?`).all(...params, Math.min(lim, 10000));
+      res.json(rows);
+    } else {
+      const rows = db.prepare(sql).all(...params);
+      res.json(rows);
+    }
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -78,7 +100,7 @@ router.post('/', (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       maHV || '', hoTen || '', ten || null, classId,
-      status || 'đi học', namSinh ?? null, soDTRieng || null, soDTPhuHuynh || null, tenPhuHuynh || null,
+      status || 'Ä‘i há»c', namSinh ?? null, soDTRieng || null, soDTPhuHuynh || null, tenPhuHuynh || null,
       diaChi || null, gioiTinh || null
     );
     const row = db.prepare('SELECT * FROM students WHERE id = ?').get(result.lastInsertRowid);
@@ -92,10 +114,10 @@ router.post('/bulk-import', (req, res) => {
   try {
     const { students } = req.body;
     if (!Array.isArray(students) || students.length === 0) {
-      return res.status(400).json({ error: 'Danh sách học sinh không hợp lệ' });
+      return res.status(400).json({ error: 'Danh sÃ¡ch há»c sinh khÃ´ng há»£p lá»‡' });
     }
 
-    // Lấy danh sách tất cả các lớp để validate
+    // Láº¥y danh sÃ¡ch táº¥t cáº£ cÃ¡c lá»›p Ä‘á»ƒ validate
     const allClasses = db.prepare('SELECT id FROM classes').all();
     const validClassIds = new Set(allClasses.map(c => c.id));
 
@@ -116,9 +138,9 @@ router.post('/bulk-import', (req, res) => {
           if (!maHV || !hoTen) {
             results.errors.push({ 
               index: i + 1, 
-              maHV: maHV || '—', 
-              hoTen: hoTen || '—', 
-              error: maHV ? 'Thiếu Họ tên' : hoTen ? 'Thiếu Mã HV' : 'Thiếu Mã HV và Họ tên'
+              maHV: maHV || 'â€”', 
+              hoTen: hoTen || 'â€”', 
+              error: maHV ? 'Thiáº¿u Há» tÃªn' : hoTen ? 'Thiáº¿u MÃ£ HV' : 'Thiáº¿u MÃ£ HV vÃ  Há» tÃªn'
             });
             continue;
           }
@@ -129,7 +151,7 @@ router.post('/bulk-import', (req, res) => {
               index: i + 1, 
               maHV: maHV, 
               hoTen: hoTen, 
-              error: 'Thiếu thông tin lớp (classId)' 
+              error: 'Thiáº¿u thÃ´ng tin lá»›p (classId)' 
             });
             continue;
           }
@@ -140,7 +162,7 @@ router.post('/bulk-import', (req, res) => {
               index: i + 1, 
               maHV: maHV, 
               hoTen: hoTen, 
-              error: `Lớp không hợp lệ (classId: ${s.classId}). Vui lòng kiểm tra lại tên lớp trong file Excel.` 
+              error: `Lá»›p khÃ´ng há»£p lá»‡ (classId: ${s.classId}). Vui lÃ²ng kiá»ƒm tra láº¡i tÃªn lá»›p trong file Excel.` 
             });
             continue;
           }
@@ -152,7 +174,7 @@ router.post('/bulk-import', (req, res) => {
               index: i + 1, 
               maHV: maHV, 
               hoTen: hoTen, 
-              error: `Mã HV "${maHV}" đã tồn tại trong lớp này` 
+              error: `MÃ£ HV "${maHV}" Ä‘Ã£ tá»“n táº¡i trong lá»›p nÃ y` 
             });
             continue;
           }
@@ -160,7 +182,7 @@ router.post('/bulk-import', (req, res) => {
           try {
             const result = insertStmt.run(
               maHV, hoTen, (s.ten || '').trim() || null, classId,
-              s.status || 'đi học', s.namSinh ?? null, (s.soDTRieng || '').trim() || null, 
+              s.status || 'Ä‘i há»c', s.namSinh ?? null, (s.soDTRieng || '').trim() || null, 
               (s.soDTPhuHuynh || '').trim() || null, (s.tenPhuHuynh || '').trim() || null,
               (s.diaChi || '').trim() || null, (s.gioiTinh || '').trim() || null
             );
@@ -168,17 +190,17 @@ router.post('/bulk-import', (req, res) => {
             // Verify the inserted row exists
             const row = db.prepare('SELECT * FROM students WHERE id = ?').get(result.lastInsertRowid);
             if (!row) {
-              throw new Error('Không thể tìm thấy học sinh vừa được thêm vào');
+              throw new Error('KhÃ´ng thá»ƒ tÃ¬m tháº¥y há»c sinh vá»«a Ä‘Æ°á»£c thÃªm vÃ o');
             }
             results.success.push(row);
           } catch (insertError) {
             const msg = insertError.message || '';
             const friendlyMessage =
               msg.includes('UNIQUE') || msg.includes('SQLITE_CONSTRAINT')
-                ? `Mã HV "${maHV}" đã tồn tại trong hệ thống (trùng với học sinh khác).`
+                ? `MÃ£ HV "${maHV}" Ä‘Ã£ tá»“n táº¡i trong há»‡ thá»‘ng (trÃ¹ng vá»›i há»c sinh khÃ¡c).`
                 : msg.includes('NOT NULL')
-                  ? 'Thiếu thông tin bắt buộc (Mã HV hoặc Họ tên).'
-                  : insertError.message || 'Lỗi khi thêm học sinh vào cơ sở dữ liệu.';
+                  ? 'Thiáº¿u thÃ´ng tin báº¯t buá»™c (MÃ£ HV hoáº·c Há» tÃªn).'
+                  : insertError.message || 'Lá»—i khi thÃªm há»c sinh vÃ o cÆ¡ sá»Ÿ dá»¯ liá»‡u.';
             results.errors.push({
               index: i + 1,
               maHV: maHV,
@@ -190,10 +212,10 @@ router.post('/bulk-import', (req, res) => {
           const msg = e.message || '';
           const friendlyMessage =
             msg.includes('UNIQUE') || msg.includes('SQLITE_CONSTRAINT')
-              ? 'Mã HV đã tồn tại trong hệ thống (trùng với học sinh khác).'
+              ? 'MÃ£ HV Ä‘Ã£ tá»“n táº¡i trong há»‡ thá»‘ng (trÃ¹ng vá»›i há»c sinh khÃ¡c).'
               : msg.includes('NOT NULL')
-                ? 'Thiếu thông tin bắt buộc (Mã HV hoặc Họ tên).'
-                : msg || 'Lỗi không xác định.';
+                ? 'Thiáº¿u thÃ´ng tin báº¯t buá»™c (MÃ£ HV hoáº·c Há» tÃªn).'
+                : msg || 'Lá»—i khÃ´ng xÃ¡c Ä‘á»‹nh.';
           results.errors.push({
             index: i + 1,
             maHV: (s.maHV || '').toString().trim(),
@@ -241,7 +263,7 @@ router.put('/:id', (req, res) => {
 
 router.delete('/:id', (req, res) => {
   try {
-    // Xóa các bản ghi liên quan trước để tránh lỗi FK constraint
+    // XÃ³a cÃ¡c báº£n ghi liÃªn quan trÆ°á»›c Ä‘á»ƒ trÃ¡nh lá»—i FK constraint
     db.prepare('DELETE FROM attendance WHERE studentId = ?').run(req.params.id);
     db.prepare('DELETE FROM session_report_student WHERE studentId = ?').run(req.params.id);
     db.prepare('DELETE FROM session_report_files WHERE studentId = ?').run(req.params.id);
@@ -274,7 +296,7 @@ router.post('/:id/status-history', (req, res) => {
     const studentId = parseInt(req.params.id, 10);
     const result = db.prepare(
       'INSERT INTO student_status_history (studentId, ngayThucHien, note, trangThaiMoi) VALUES (?, ?, ?, ?)'
-    ).run(studentId, ngayThucHien || new Date().toISOString().slice(0, 10), note || null, trangThaiMoi || 'đi học');
+    ).run(studentId, ngayThucHien || new Date().toISOString().slice(0, 10), note || null, trangThaiMoi || 'Ä‘i há»c');
     db.prepare('UPDATE students SET status = ? WHERE id = ?').run(trangThaiMoi, studentId);
     setLastEdit('students', studentId);
     const row = db.prepare('SELECT * FROM student_status_history WHERE id = ?').get(result.lastInsertRowid);

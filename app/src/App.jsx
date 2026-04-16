@@ -8,6 +8,7 @@ import Attendance from './pages/Attendance';
 import Dashboard from './pages/Dashboard';
 import Azota from './pages/Azota';
 import AzotaExamResult from './pages/AzotaExamResult';
+import SCM from './pages/SCM';
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
         <Route path="/azota-exam-result" element={<AzotaExamResult />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/azota" element={<Azota />} />
+        <Route path="/scm" element={<SCM />} />
       </Routes>
     </Layout>
   );

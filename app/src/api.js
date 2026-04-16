@@ -197,6 +197,11 @@ export const studentsApi = {
     return result?.timestamp || null;
   },
   list: async (params) => {
+    const skipCache = !!(params?.q || params?.search || params?.excludeClassId);
+    if (skipCache) {
+      const q = new URLSearchParams(params).toString();
+      return request('/students' + (q ? `?${q}` : ''));
+    }
     // Check cache first
     const cached = studentsCache.getCache(params);
     if (cached) {
@@ -237,7 +242,13 @@ export const studentsApi = {
 // In-memory cache for sessions list (short TTL to avoid re-fetch when switching filter back)
 let sessionsListCache = null;
 
+function invalidateSessionsListCache() {
+  sessionsListCache = null;
+}
+
 export const sessionsApi = {
+  /** Gọi sau khi ca học thay đổi ngoài create/update/delete (nếu cần). */
+  invalidateListCache: invalidateSessionsListCache,
   list: async (params) => {
     const q = new URLSearchParams(params).toString();
     const cacheKey = 'sessions_list_' + q;
@@ -259,9 +270,21 @@ export const sessionsApi = {
   saveSeatMap: (id, body) => request(`/sessions/${id}/seat-map`, { method: 'PUT', body: JSON.stringify(body) }),
   saveStudentReports: (id, body) => request(`/sessions/${id}/student-reports`, { method: 'PUT', body: JSON.stringify(body) }),
   patchStudentReport: (id, studentId, body) => request(`/sessions/${id}/student-reports/${studentId}`, { method: 'PATCH', body: JSON.stringify(body) }),
-  create: (body) => request('/sessions', { method: 'POST', body: JSON.stringify(body) }),
-  update: (id, body) => request(`/sessions/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  delete: (id) => request(`/sessions/${id}`, { method: 'DELETE' }),
+  create: async (body) => {
+    const row = await request('/sessions', { method: 'POST', body: JSON.stringify(body) });
+    invalidateSessionsListCache();
+    return row;
+  },
+  update: async (id, body) => {
+    const row = await request(`/sessions/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+    invalidateSessionsListCache();
+    return row;
+  },
+  delete: async (id) => {
+    const result = await request(`/sessions/${id}`, { method: 'DELETE' });
+    invalidateSessionsListCache();
+    return result;
+  },
 };
 
 export const dashboardApi = {
@@ -299,6 +322,44 @@ export const azotaExamResultApi = {
       throw e;
     }
   },
+};
+
+export const layoutApi = {
+  get: (classId) => request(`/classes/${classId}/layout`),
+  save: (classId, body) => request(`/classes/${classId}/layout`, { method: 'PUT', body: JSON.stringify(body) }),
+};
+
+export const noteTagsApi = {
+  list: (params) => {
+    const q = params ? new URLSearchParams(params).toString() : '';
+    return request('/note-tags' + (q ? `?${q}` : ''));
+  },
+  create: (body) => request('/note-tags', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id, body) => request(`/note-tags/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  delete: (id) => request(`/note-tags/${id}`, { method: 'DELETE' }),
+  seed: () => request('/note-tags/seed', { method: 'POST' }),
+};
+
+export const studentNotesApi = {
+  list: (params) => {
+    const q = new URLSearchParams(params).toString();
+    return request('/student-notes' + (q ? `?${q}` : ''));
+  },
+  create: (body) => request('/student-notes', { method: 'POST', body: JSON.stringify(body) }),
+  delete: (id) => request(`/student-notes/${id}`, { method: 'DELETE' }),
+  timeline: (studentId) => request(`/student-notes/timeline?studentId=${studentId}`),
+  summary: (params) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/student-notes/summary?${q}`);
+  },
+};
+
+export const imageOcrApi = {
+  recognizeSeatingChart: (image, mimeType) =>
+    request('/image-ocr/seating-chart', {
+      method: 'POST',
+      body: JSON.stringify({ image, mimeType }),
+    }),
 };
 
 export const attendanceApi = {

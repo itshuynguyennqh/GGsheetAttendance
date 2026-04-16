@@ -22,15 +22,28 @@ export function parseThang(thang) {
 }
 
 export function formatThangBuoiLabel(thang, buoi) {
-  if (buoi == null || Number.isNaN(Number(buoi))) return null;
-  const p = parseThang(thang);
-  if (!p) {
-    const t = String(thang || '').trim();
-    if (!t) return null;
-    return `${t}-B${String(Number(buoi)).padStart(2, '0')}`;
+  const hasT = thang != null && String(thang).trim() !== '';
+  const buNum = Number(buoi);
+  const hasB = buoi != null && String(buoi).trim() !== '' && !Number.isNaN(buNum);
+  if (!hasT && !hasB) return null;
+
+  if (hasT && hasB) {
+    const p = parseThang(thang);
+    if (!p) {
+      const t = String(thang || '').trim();
+      return `${t}-B${String(buNum).padStart(2, '0')}`;
+    }
+    const t = `${p.year}.${String(p.month).padStart(2, '0')}`;
+    return `${t}-B${String(buNum).padStart(2, '0')}`;
   }
-  const t = `${p.year}.${String(p.month).padStart(2, '0')}`;
-  return `${t}-B${String(Number(buoi)).padStart(2, '0')}`;
+
+  if (hasT) {
+    const p = parseThang(thang);
+    if (p) return `${p.year}.${String(p.month).padStart(2, '0')} (chưa buổi)`;
+    return `${String(thang).trim()} (chưa buổi)`;
+  }
+
+  return `Buổi ${String(buNum).padStart(2, '0')} (chưa tháng)`;
 }
 
 /** So sánh hai nhãn YYYY.MM-BB (hoặc legacy MM.YYYY-BB) */

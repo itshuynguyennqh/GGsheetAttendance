@@ -8,6 +8,7 @@ const {
   normalizeThang,
   formatThangBuoiLabel,
 } = require('./attendanceImportHelpers');
+const { mergeCrossClassStudents } = require('../lib/mergeAttendanceGuests');
 
 /** Get max lastEditAt timestamp for cache validation (classId/ngayHocLte optional) */
 function getMaxTimestamp(classId, ngayHocLte) {
@@ -74,6 +75,7 @@ router.get('/', (req, res) => {
       if (sessions.length === 0) return res.json({ sessions: [], students: [], attendance: [] });
       const s = sessions[0];
       students = db.prepare('SELECT * FROM students WHERE classId = ? ORDER BY maHV').all(s.classId);
+      students = mergeCrossClassStudents([s.id], s.classId, students);
     } else if (classId) {
       reqStart = Date.now();
       const pg = Math.max(1, parseInt(page, 10) || 1);
@@ -127,15 +129,25 @@ router.get('/', (req, res) => {
       logTiming('groups query', stepMs.groups, { classId, groupCount: groups.length });
 
       if (groups.length === 0) {
-        const payload = { sessions: [], students: db.prepare('SELECT * FROM students WHERE classId = ? ORDER BY maHV').all(classId), attendance: {} };
+        const rosterOnly = db.prepare('SELECT * FROM students WHERE classId = ? ORDER BY maHV').all(classId);
+        const payload = { sessions: [], students: mergeCrossClassStudents([], classId, rosterOnly), attendance: {} };
         if (classId) payload.timestamp = getMaxTimestamp(classId, ngayHocLte);
         payload.totalGroups = 0;
         return res.json(payload);
       }
 
       t0 = Date.now();
-      const groupVals = groups.flatMap(g => [g.thang, g.buoi]);
-      const groupConds = groups.map(() => '(thang = ? AND buoi = ?)').join(' OR ');
+      const groupConds = groups.map(g => {
+        const t = g.thang === null ? 'thang IS NULL' : 'thang = ?';
+        const b = g.buoi === null ? 'buoi IS NULL' : 'buoi = ?';
+        return `(${t} AND ${b})`;
+      }).join(' OR ');
+      const groupVals = groups.flatMap(g => {
+        const vals = [];
+        if (g.thang !== null) vals.push(g.thang);
+        if (g.buoi !== null) vals.push(g.buoi);
+        return vals;
+      });
       const sessionSQL = `SELECT * FROM sessions WHERE (${groupConds}) AND classId = ? AND enableAttendance = 1` +
         (gte ? ' AND ngayHoc >= ?' : '') + (ngayHocLte ? ' AND ngayHoc <= ?' : '') +
         ' ORDER BY ngayHoc, startTime';
@@ -162,6 +174,7 @@ router.get('/', (req, res) => {
       stepMs.count = Date.now() - t0;
       totalGroups = countGrp?.cnt ?? 0;
       students = db.prepare('SELECT * FROM students WHERE classId = ? ORDER BY maHV').all(classId);
+      students = mergeCrossClassStudents(sessions.map((x) => x.id), classId, students);
       res.set('X-Total-Groups', String(totalGroups));
       logTiming('count + students', stepMs.count);
     } else {
@@ -237,7 +250,7 @@ router.put('/', (req, res) => {
       const { studentId, sessionId, ngayDiemDanh, value, note } = it;
       if (!studentId || !sessionId) continue;
 
-      /** Ghi đè value/note (kể cả NULL) — tránh COALESCE(?, value) khiến xóa ô không có tác dụng */
+      /** Ghi Ä‘Ã¨ value/note (ká»ƒ cáº£ NULL) â€” trÃ¡nh COALESCE(?, value) khiáº¿n xÃ³a Ã´ khÃ´ng cÃ³ tÃ¡c dá»¥ng */
       let val = null;
       if (value != null && String(value).trim() !== '') {
         const n = normalizeValue(value);
@@ -293,7 +306,7 @@ router.post('/validate-import', (req, res) => {
       const rowWarnings = [];
 
       const student = findStudent(db, { maHV, hoTen, classId });
-      if (!student) rowErrors.push('Không tìm thấy học sinh');
+      if (!student) rowErrors.push('KhÃ´ng tÃ¬m tháº¥y há»c sinh');
 
       const resolvedClassId = student ? student.classId : (classId || null);
       const recordDetails = [];
@@ -302,16 +315,16 @@ router.post('/validate-import', (req, res) => {
         const { thang, buoi, value, note } = rec;
         const normalizedValue = normalizeValue(value);
         if (normalizedValue === null && value !== '' && value != null) {
-          rowErrors.push(`Giá trị điểm danh không hợp lệ: "${value}" (thang ${thang}, buoi ${buoi})`);
+          rowErrors.push(`GiÃ¡ trá»‹ Ä‘iá»ƒm danh khÃ´ng há»£p lá»‡: "${value}" (thang ${thang}, buoi ${buoi})`);
           errorRecords++;
         }
 
         const session = student ? findOrCreateSession(db, resolvedClassId, thang, buoi, false) : null;
         if (student && !session) {
           if (createSessionsIfNotExists) {
-            rowWarnings.push(`Session chưa có (sẽ tạo khi import): ${thang}-B${buoi}`);
+            rowWarnings.push(`Session chÆ°a cÃ³ (sáº½ táº¡o khi import): ${thang}-B${buoi}`);
           } else {
-            rowErrors.push(`Session không tồn tại: ${formatThangBuoiLabel(thang, buoi)}`);
+            rowErrors.push(`Session khÃ´ng tá»“n táº¡i: ${formatThangBuoiLabel(thang, buoi)}`);
             errorRecords++;
           }
         }
@@ -324,7 +337,7 @@ router.post('/validate-import', (req, res) => {
           totalRecords++;
           if (existingAttendance) {
             if (updateExisting) updateRecords++;
-            else rowWarnings.push(`Đã có điểm danh (sẽ update): ${formatThangBuoiLabel(thang, buoi)}`);
+            else rowWarnings.push(`ÄÃ£ cÃ³ Ä‘iá»ƒm danh (sáº½ update): ${formatThangBuoiLabel(thang, buoi)}`);
           } else newRecords++;
         }
 
@@ -395,7 +408,7 @@ router.post('/bulk-import', (req, res) => {
 
       const student = findStudent(db, { maHV, hoTen, classId });
       if (!student) {
-        errors.push({ rowIndex: i + 1, maHV: maHV || '', hoTen: hoTen || '', error: 'Không tìm thấy học sinh' });
+        errors.push({ rowIndex: i + 1, maHV: maHV || '', hoTen: hoTen || '', error: 'KhÃ´ng tÃ¬m tháº¥y há»c sinh' });
         continue;
       }
 
@@ -405,13 +418,13 @@ router.post('/bulk-import', (req, res) => {
         const { thang, buoi, value, note } = rec;
         const normalizedValue = normalizeValue(value);
         if (normalizedValue === null && value !== '' && value != null) {
-          errors.push({ rowIndex: i + 1, maHV, thang, buoi, error: `Giá trị không hợp lệ: "${value}"` });
+          errors.push({ rowIndex: i + 1, maHV, thang, buoi, error: `GiÃ¡ trá»‹ khÃ´ng há»£p lá»‡: "${value}"` });
           continue;
         }
 
         const session = findOrCreateSession(db, resolvedClassId, thang, buoi, createSessionsIfNotExists);
         if (!session) {
-          errors.push({ rowIndex: i + 1, maHV, thang, buoi, error: 'Session không tồn tại' });
+          errors.push({ rowIndex: i + 1, maHV, thang, buoi, error: 'Session khÃ´ng tá»“n táº¡i' });
           continue;
         }
 

@@ -2,12 +2,18 @@
 // TEMPLATE TIN NHẮN GỬI PHỤ HUYNH (3 NHÓM HỌC LỰC)
 // ======================================================
 
-/** Lấy tên hiển thị (bỏ họ): "Nguyễn Hà Anh" -> "Hà Anh" */
+/** Lấy tên hiển thị: 2 giá trị cuối sau split khoảng trắng (VD "Trần Thị Bảo Ngọc" -> "Bảo Ngọc"). */
 function getDisplayName(fullName) {
   if (!fullName || typeof fullName !== "string") return "";
-  var parts = String(fullName).trim().split(/\s+/);
-  if (parts.length <= 1) return parts[0] || "";
-  return parts.slice(1).join(" ");
+  var parts = String(fullName)
+    .trim()
+    .split(/\s+/)
+    .filter(function(p) {
+      return p.length > 0;
+    });
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return parts[0];
+  return parts.slice(-2).join(" ");
 }
 
 /** Định dạng chi tiết điểm cho template */
@@ -20,12 +26,11 @@ function formatChiTietDiem(scores) {
 }
 
 // Template 1-4 (chuẩn cũ - chọn ngẫu nhiên)
-function generateMessageTemplate1(student, rangeDate, avgScore, btvnAzotaRate) {
+function generateMessageTemplate1(student, rangeDate, avgScore) {
   var lines = [];
   lines.push("Kính gửi PH em " + student.name + " (" + student.class + "),");
   lines.push("Trung tâm gửi báo cáo tổng hợp từ " + rangeDate + ":");
   if (avgScore) lines.push("- Điểm trung bình các bài kiểm tra: " + avgScore);
-  if (btvnAzotaRate && btvnAzotaRate !== "N/A") lines.push("- Chỉ số hoàn thành BTVN Azota: " + btvnAzotaRate);
   var errs = [];
   if (student.errors.btvn > 0) errs.push(student.errors.btvn + " lần thiếu BTVN");
   if (student.errors.att > 0) errs.push(student.errors.att + " lần nhắc nhở ý thức");
@@ -36,12 +41,11 @@ function generateMessageTemplate1(student, rangeDate, avgScore, btvnAzotaRate) {
   return lines.join("\n");
 }
 
-function generateMessageTemplate2(student, rangeDate, avgScore, btvnAzotaRate) {
+function generateMessageTemplate2(student, rangeDate, avgScore) {
   var lines = [];
   lines.push("Xin chào gia đình em " + student.name + " (" + student.class + "),");
   lines.push("Trung tâm xin gửi báo cáo học tập của con trong khoảng thời gian từ " + rangeDate + ":");
   if (avgScore) lines.push("• Kết quả kiểm tra: Điểm trung bình " + avgScore);
-  if (btvnAzotaRate && btvnAzotaRate !== "N/A") lines.push("• BTVN Azota: " + btvnAzotaRate);
   var errs = [];
   if (student.errors.btvn > 0) errs.push(student.errors.btvn + " lần thiếu BTVN");
   if (student.errors.att > 0) errs.push(student.errors.att + " lần nhắc nhở ý thức");
@@ -52,12 +56,11 @@ function generateMessageTemplate2(student, rangeDate, avgScore, btvnAzotaRate) {
   return lines.join("\n");
 }
 
-function generateMessageTemplate3(student, rangeDate, avgScore, btvnAzotaRate) {
+function generateMessageTemplate3(student, rangeDate, avgScore) {
   var lines = [];
   lines.push("Gửi PH em " + student.name + " (" + student.class + "),");
   lines.push("Báo cáo từ " + rangeDate + ":");
   if (avgScore) lines.push("- Điểm TB: " + avgScore);
-  if (btvnAzotaRate && btvnAzotaRate !== "N/A") lines.push("- BTVN Azota: " + btvnAzotaRate);
   var errs = [];
   if (student.errors.btvn > 0) errs.push(student.errors.btvn + " lần thiếu BTVN");
   if (student.errors.att > 0) errs.push(student.errors.att + " lần nhắc nhở ý thức");
@@ -68,12 +71,11 @@ function generateMessageTemplate3(student, rangeDate, avgScore, btvnAzotaRate) {
   return lines.join("\n");
 }
 
-function generateMessageTemplate4(student, rangeDate, avgScore, btvnAzotaRate) {
+function generateMessageTemplate4(student, rangeDate, avgScore) {
   var lines = [];
   lines.push("Thân gửi PH em " + student.name + " (" + student.class + "),");
   lines.push("Trung tâm gửi báo cáo tổng hợp học tập từ " + rangeDate + ":");
   if (avgScore) lines.push("📊 Điểm số: Trung bình " + avgScore + " điểm");
-  if (btvnAzotaRate && btvnAzotaRate !== "N/A") lines.push("📝 BTVN Azota: " + btvnAzotaRate);
   var errs = [];
   if (student.errors.btvn > 0) errs.push(student.errors.btvn + " lần thiếu BTVN");
   if (student.errors.att > 0) errs.push(student.errors.att + " lần nhắc nhở ý thức");
@@ -84,23 +86,22 @@ function generateMessageTemplate4(student, rangeDate, avgScore, btvnAzotaRate) {
   return lines.join("\n");
 }
 
-function generateMessage(student, rangeDate, avgScore, btvnAzotaRate) {
+function generateMessage(student, rangeDate, avgScore) {
   var templateIndex = Math.floor(Math.random() * 4) + 1;
   switch (templateIndex) {
-    case 1: return generateMessageTemplate1(student, rangeDate, avgScore, btvnAzotaRate);
-    case 2: return generateMessageTemplate2(student, rangeDate, avgScore, btvnAzotaRate);
-    case 3: return generateMessageTemplate3(student, rangeDate, avgScore, btvnAzotaRate);
-    case 4: return generateMessageTemplate4(student, rangeDate, avgScore, btvnAzotaRate);
-    default: return generateMessageTemplate1(student, rangeDate, avgScore, btvnAzotaRate);
+    case 1: return generateMessageTemplate1(student, rangeDate, avgScore);
+    case 2: return generateMessageTemplate2(student, rangeDate, avgScore);
+    case 3: return generateMessageTemplate3(student, rangeDate, avgScore);
+    case 4: return generateMessageTemplate4(student, rangeDate, avgScore);
+    default: return generateMessageTemplate1(student, rangeDate, avgScore);
   }
 }
 
 /**
  * Nhóm 1: Giỏi/Ngoan. opts: { indicators, thaiDo, phat }
  */
-function generateMessageGroup1(student, monthLabel, rangeDate, avg, btvnAzotaRate, opts) {
+function generateMessageGroup1(student, monthLabel, rangeDate, avg, opts) {
   var ten = getDisplayName(student.name);
-  var chiTietAzota = (btvnAzotaRate && btvnAzotaRate !== "N/A") ? btvnAzotaRate : "hoàn thành đầy đủ";
   var diemTBText = avg ? avg : "cao";
   var lines = [];
   lines.push("Dạ em chào chị ạ.");
@@ -108,7 +109,7 @@ function generateMessageGroup1(student, monthLabel, rangeDate, avg, btvnAzotaRat
   lines.push("");
   lines.push("Kết quả tháng này của con rất tốt:");
   lines.push("• Điểm số: Phong độ ổn định, điểm trung bình đạt mức cao " + diemTBText + ".");
-  lines.push("• Ý thức: Con đi học đầy đủ, tập trung nghe giảng và hoàn thành tốt các bài tập trên Azota (" + chiTietAzota + ").");
+  lines.push("• Ý thức: Con đi học đầy đủ, tập trung nghe giảng và hoàn thành tốt các bài tập.");
   lines.push("");
   lines.push("Con đang có đà học tập hiệu quả, rất mong gia đình tiếp tục động viên để con duy trì phong độ này trong các tháng tới. Trong quá trình học tập, nếu con có khúc mắc, khó khăn gì mong được gia đình góp ý chia sẻ để lớp học cải thiện chất lượng. Em cảm ơn chị ạ.");
   return lines.join("\n");
@@ -117,7 +118,7 @@ function generateMessageGroup1(student, monthLabel, rangeDate, avg, btvnAzotaRat
 /**
  * Nhóm 2: Khá / chểnh mảng. opts: { indicators, thaiDo, phat }
  */
-function generateMessageGroup2(student, monthLabel, rangeDate, avg, btvnAzotaRate, opts) {
+function generateMessageGroup2(student, monthLabel, rangeDate, avg, opts) {
   var ind = opts.indicators || {};
   var ten = getDisplayName(student.name);
   var thaiDo = opts.thaiDo || "chưa tập trung";
@@ -128,14 +129,12 @@ function generateMessageGroup2(student, monthLabel, rangeDate, avg, btvnAzotaRat
   if (ind.diemTB === "ok" && avg) lines.push("Về sức học thì con vẫn nắm được bài (Điểm TB: " + avg + ").");
   else if (avg) lines.push("Về sức học: Điểm TB " + avg + ".");
   if (ind.thaiDo === "ok") lines.push("Trên lớp con ý thức tốt.");
-  if (ind.btvnAzota === "ok" && btvnAzotaRate && btvnAzotaRate !== "N/A") lines.push("BTVN Azota con hoàn thành đầy đủ.");
-  var needImprove = ind.thaiDo !== "ok" || ind.btvnAzota !== "ok" || ind.diemTB === "nho" || ind.diemTB === "xau" || phat;
+  var needImprove = ind.thaiDo !== "ok" || ind.diemTB === "nho" || ind.diemTB === "xau" || phat;
   if (needImprove) {
     if (ind.thaiDo !== "ok") lines.push("Tháng này ý thức của con đang hơi \"lỏng\" một chút chị ạ:");
     lines.push("Cần lưu ý:");
     if (ind.diemTB === "nho" || ind.diemTB === "xau") lines.push("- Điểm TB còn cần cải thiện" + (avg ? " (" + avg + ")." : "."));
     if (ind.thaiDo !== "ok") lines.push("- Trên lớp con còn chưa thực sự tập trung (" + thaiDo + ").");
-    if (ind.btvnAzota !== "ok") lines.push("- Về nhà con có vài buổi chưa hoàn thành BTVN Azota.");
     if (phat) lines.push("- Cụ thể hôm rồi con có bị phạt: " + phat + ".");
     lines.push("");
     lines.push("Chị nhắc nhẹ để con chấn chỉnh lại thái độ học tập giúp em nha. Kiến thức ngày càng khó, con lơ là xíu là dễ bị trượt điểm ngay ạ. Trong quá trình học tập, nếu con có khúc mắc, khó khăn gì mong được gia đình góp ý chia sẻ để lớp học cải thiện chất lượng. Em cảm ơn chị ạ.");
@@ -148,7 +147,7 @@ function generateMessageGroup2(student, monthLabel, rangeDate, avg, btvnAzotaRat
 /**
  * Nhóm 3: Cần báo động. opts: { indicators, thaiDo, phat }
  */
-function generateMessageGroup3(student, monthLabel, rangeDate, avg, btvnAzotaRate, opts) {
+function generateMessageGroup3(student, monthLabel, rangeDate, avg, opts) {
   var ind = opts.indicators || {};
   var ten = getDisplayName(student.name);
   var thaiDo = opts.thaiDo || "có lỗi về ý thức";
@@ -159,7 +158,6 @@ function generateMessageGroup3(student, monthLabel, rangeDate, avg, btvnAzotaRat
   var positives = [];
   if (ind.diemTB === "ok" && avg) positives.push("Điểm số ổn (" + avg + ")");
   if (ind.thaiDo === "ok") positives.push("Ý thức trên lớp tốt");
-  if (ind.btvnAzota === "ok") positives.push("BTVN Azota hoàn thành");
   if (positives.length > 0) lines.push("Một số điểm tích cực: " + positives.join(". ") + ".");
   lines.push("");
   if (ind.thaiDo !== "ok") {
@@ -173,7 +171,6 @@ function generateMessageGroup3(student, monthLabel, rangeDate, avg, btvnAzotaRat
   } else if (ind.chepPhat !== "ok") {
     lines.push("Con có chép phạt để ghi nhớ lỗi sai/từ vựng.");
   }
-  lines.push("Về bài vở: Con thiếu khá nhiều bài tập Azota.");
   lines.push("");
   lines.push("Trong quá trình học tập, nếu con có khúc mắc, khó khăn gì mong được gia đình góp ý chia sẻ để lớp học cải thiện chất lượng. Em cảm ơn chị ạ.");
   return lines.join("\n");

@@ -28,21 +28,6 @@ function _corrParseLoi(s) {
 }
 
 /**
- * Parse Chỉ số BTVN Azota "x/y (z%)" -> số % hoặc null
- */
-function _corrParseAzotaPct(s) {
-  if (!s || typeof s !== "string") return null;
-  var m = String(s).match(/\((\d+(?:[.,]\d+)?)\s*%\)/);
-  if (m) return parseFloat(m[1].replace(",", "."));
-  var mm = String(s).match(/(\d+)\s*\/\s*(\d+)/);
-  if (mm) {
-    var den = parseInt(mm[2], 10);
-    return den > 0 ? (parseInt(mm[1], 10) / den * 100) : null;
-  }
-  return null;
-}
-
-/**
  * Encode ok/nho/xau (lấy dòng đầu nếu có \n)
  */
 function _corrEncodeTC(val) {
@@ -100,14 +85,11 @@ function _extractCorrelationData(sheet) {
   var idxDiemTBPrev = _corrFindCol(headers, "Điểm TB (T.trước)");
   var idxLoi = _corrFindCol(headers, "Lỗi (BTVN");
   var idxLoiPrev = _corrFindCol(headers, "Lỗi (T.trước)");
-  var idxAzota = _corrFindCol(headers, "Chỉ số BTVN Azota");
-  var idxAzotaPrev = _corrFindCol(headers, "Chỉ số BTVN Azota (T.trước)");
   var idxSoBuoiDi = _corrFindCol(headers, "Số buổi đi");
   var idxSoBuoiNghi = _corrFindCol(headers, "Số buổi nghỉ");
   var idxNhom = _corrFindCol(headers, "Nhóm");
   var idxTcDiemTB = _corrFindCol(headers, "TC Điểm TB");
   var idxTcThaiDo = _corrFindCol(headers, "TC Thái độ");
-  var idxTcBTVN = _corrFindCol(headers, "TC BTVN Azota");
   var idxTcChepPhat = _corrFindCol(headers, "TC Chép phạt");
 
   function col(idx) {
@@ -191,25 +173,6 @@ function _extractCorrelationData(sheet) {
     }
     vars["Tổng_lỗi_Trước"] = totalPrev;
     labels.push("Tổng_lỗi_Trước");
-  }
-  if (idxAzota >= 0) {
-    vars["Azota_Pct"] = col(idxAzota).map(function(v) { return _corrParseAzotaPct(String(v || "")); });
-    labels.push("Azota_Pct");
-  }
-  if (idxAzotaPrev >= 0) {
-    vars["Azota_Pct_Trước"] = col(idxAzotaPrev).map(function(v) { return _corrParseAzotaPct(String(v || "")); });
-    labels.push("Azota_Pct_Trước");
-  }
-  if (idxAzota >= 0 && idxAzotaPrev >= 0 && vars["Azota_Pct"] && vars["Azota_Pct_Trước"]) {
-    var arr = [];
-    for (var r = 0; r < n; r++) {
-      var c = vars["Azota_Pct"][r];
-      var p = vars["Azota_Pct_Trước"][r];
-      if (c != null && !isNaN(c) && p != null && !isNaN(p)) arr.push(c - p);
-      else arr.push(null);
-    }
-    vars["Azota_Diff"] = arr;
-    labels.push("Azota_Diff");
   }
   if (idxNhom >= 0) {
     vars["Nhóm"] = col(idxNhom).map(function(v) {

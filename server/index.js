@@ -22,6 +22,11 @@ try {
   throw e;
 }
 // #endregion agent log
+const layoutConfigRouter = require('./routes/layoutConfig');
+const noteTagsRouter = require('./routes/noteTags');
+const studentNotesRouter = require('./routes/studentNotes');
+const imageOcrRouter = require('./routes/imageOcr');
+const dataRevisionRouter = require('./routes/dataRevision');
 
 initSchema();
 
@@ -67,6 +72,11 @@ app.use('/api/azota-api-registry', azotaApiRegistryRouter);
 console.log('[DEBUG] Mounting /api/azota-exam-result route');
 // #endregion agent log
 app.use('/api/azota-exam-result', azotaExamResultRouter);
+app.use('/api/classes/:classId/layout', layoutConfigRouter);
+app.use('/api/note-tags', noteTagsRouter);
+app.use('/api/student-notes', studentNotesRouter);
+app.use('/api/image-ocr', imageOcrRouter);
+app.use('/api/data-revision', dataRevisionRouter);
 
 // Error handler middleware để log stack trace
 app.use((err, req, res, next) => {
@@ -118,9 +128,13 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
+  const os = require('os');
+  const nets = os.networkInterfaces();
+  const lanIps = Object.values(nets).flat().filter(n => n.family === 'IPv4' && !n.internal).map(n => n.address);
   console.log('');
   console.log(`[server] API: http://localhost:${PORT}`);
+  lanIps.forEach(ip => console.log(`[server] LAN: http://${ip}:${PORT}`));
   console.log(`[server] Docs: http://localhost:${PORT}/api-docs`);
   if (azotaSpec) console.log(`[server] Azota API Docs: http://localhost:${PORT}/api-docs-azota`);
   console.log('');
