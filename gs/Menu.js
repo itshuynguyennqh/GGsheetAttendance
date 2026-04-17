@@ -23,6 +23,8 @@ function onOpen() {
       .addItem("📥 1. Kéo điểm danh sang BaoCao", "showAttendanceExportDialog")
       .addItem("📊 2. Kéo điểm Azota", "pullAzotaExamResult")
       .addSeparator()
+      .addItem("📊 3. Đồng bộ Notes", "syncCommentsToNotes")
+
       .addSubMenu(
         ui
           .createMenu("⚙️ Gemini (API · Model · Thông tin)")
