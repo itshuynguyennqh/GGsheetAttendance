@@ -9,7 +9,7 @@ if ($backendRunning) {
     Write-Host "Backend da chay tai port 3001" -ForegroundColor Green
 } else {
     Write-Host "Dang khoi dong Backend..." -ForegroundColor Yellow
-    Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot\server'; node index.js" -WindowStyle Normal
+    Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot\webapp\server'; node index.js" -WindowStyle Normal
     Start-Sleep -Seconds 3
     Write-Host "Backend da khoi dong" -ForegroundColor Green
 }
@@ -22,5 +22,5 @@ Write-Host ""
 Write-Host "Nhan Ctrl+C de dung frontend server" -ForegroundColor Yellow
 Write-Host ""
 
-cd app
+cd webapp/app
 npm run dev

@@ -25,5 +25,5 @@ if ($portInUse) {
 Write-Host "Dang khoi dong Backend tai http://localhost:3001..." -ForegroundColor Yellow
 Write-Host ""
 
-cd server
+cd webapp/server
 node index.js

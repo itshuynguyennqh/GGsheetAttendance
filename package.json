@@ -1,10 +1,10 @@
 {
   "scripts": {
     "dev": "node dev/server.js",
-    "server": "node server/index.js",
-    "dev:server": "node server/index.js",
-    "dev:server:debug": "cross-env DEBUG=1 DEBUG_API=1 DEBUG_ATTENDANCE_TIMING=1 node server/index.js",
-    "dev:app": "cd app && npm run dev",
+    "server": "node webapp/server/index.js",
+    "dev:server": "node webapp/server/index.js",
+    "dev:server:debug": "cross-env DEBUG=1 DEBUG_API=1 DEBUG_ATTENDANCE_TIMING=1 node webapp/server/index.js",
+    "dev:app": "cd webapp/app && npm run dev",
     "dev:full": "concurrently -n server,app -c blue,green \"npm run dev:server\" \"npm run dev:app\"",
     "dev:full:debug": "concurrently -n server,app -c blue,green \"npm run dev:server:debug\" \"npm run dev:app\"",
     "dev:live": "concurrently -n app,sync -c blue,green \"cross-env PORT=3001 node dev/server.js\" \"wait-on http://127.0.0.1:3001 && browser-sync start -p 3000 --proxy http://127.0.0.1:3001 --files 'dev/**/*.html' 'dev/**/*.css' 'dev/**/*.js'\"",

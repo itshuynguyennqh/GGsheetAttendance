@@ -8,8 +8,7 @@ dev/**
 node_modules/**
 
 # Không push các file website (frontend và backend)
-app/**
-server/**
+webapp/**
 
 # Không push các file cấu hình website
 package.json
@@ -17,9 +16,8 @@ package-lock.json
 start-backend.ps1
 start-dev.ps1
 
-# Không push dữ liệu và mockups
+# Không push dữ liệu
 data/**
-mockups/**
 
 # Tùy chọn: không push docs (tài liệu, không cần trên App Script)
 # docs/**
