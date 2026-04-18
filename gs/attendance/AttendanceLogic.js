@@ -39,7 +39,7 @@ function processAttendanceExport(startRow, endRow, sessionNumber, selectedColumn
     let cellColor = backgrounds[i][0].toLowerCase();
     
     var valUpper = cellValue.toString().toUpperCase().trim();
-    if ((valUpper === "X" || valUpper === "M") && TARGET_COLORS.includes(cellColor)) {
+    if ((valUpper === "X" || valUpper === "M" || valUpper === "B") && TARGET_COLORS.includes(cellColor)) {
       extractedData.push({
         ma: values[i][0],
         hoTen: values[i][1],
