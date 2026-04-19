@@ -14,6 +14,7 @@ function onOpen() {
     ui.createMenu("👉 Báo cáo Tháng")
       .addItem("📅 1. Tạo báo cáo tổng hợp (Gửi PH)", "showDateRangePicker")
       .addItem("💬 1b. Chỉ tạo lại nội dung tin nhắn (mẫu mới)", "showRegenerateMessagesDialog")
+      .addItem('🔗 Gộp dữ liệu nhiều tháng (Thủ công)', 'manualJoinAllMonthlySheets')
 
       .addSeparator()
       .addToUi();
