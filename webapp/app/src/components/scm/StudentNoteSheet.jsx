@@ -148,8 +148,8 @@ function StudentNoteSheet({ open, student, sessionId, onClose }) {
             ) : (
               <Stack spacing={0.5} sx={{ maxHeight: 250, overflow: 'auto' }}>
                 {notes.map((note) => (
-                  <Stack
-                    key={note.id}
+                  <Stack // Use a composite key for robustness
+                    key={`${note.id}-${note.type || 'unknown'}`}
                     direction="row"
                     alignItems="center"
                     spacing={1}

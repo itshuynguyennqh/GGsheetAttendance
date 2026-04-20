@@ -18,14 +18,18 @@ var AZOTA_GEMINI_KEY_FATAL = false;
  * - Gemma 4 31B: RPM 15, RPD 1500
  * Áp dụng cho toàn bộ 3 API key (luân phiên key như logic hiện tại).
  */
+// ⚠️ Kiểm tra model ID chính xác tại: https://aistudio.google.com/app/apikey
+// Model chính: Flash Lite Preview (tốc độ cao, gửi tất cả ảnh 1 request)
+var FLASH_LITE_MODEL_ID = 'gemini-3.1-flash-lite-preview';
 var GEMINI_MODEL_FALLBACKS = [
-  { id: 'gemini-2.5-flash', rpm: 5, rpd: 20 },
-  { id: 'gemma-4-31b-it', rpm: 15, rpd: 1500 }
+  { id: FLASH_LITE_MODEL_ID, rpm: 15, rpd: 500 },
+  { id: 'gemma-4-31b-it', rpm: 15, rpd: 1500 },
+  { id: 'gemini-2.5-flash', rpm: 5, rpd: 20 }
 ];
 var GEMINI_RPM_WINDOW_MS = 60000;
 var _geminiLastCallMsByModel = {};
-/** Số ảnh gửi trong 1 request batch Gemini (giảm số lần gọi API). */
-var GEMINI_BATCH_SIZE = 6;
+/** Chỉ dùng cho processGeminiJobsBatchParallel (fallback). processGeminiJobsAllAtOnce không dùng batch. */
+var GEMINI_BATCH_SIZE = 8;
 
 function _sanitizeModelIdForKey(modelId) {
   return String(modelId || '').replace(/[^a-zA-Z0-9_.-]/g, '_');
@@ -949,6 +953,203 @@ function processGeminiJobsBatch(geminiJobs, keys, geminiUrl, recognized, ss, stu
   }
 }
 
+/**
+ * OCR tất cả ảnh trong 1 request Gemini duy nhất.
+ * Lần lượt thử từng API key cho đến khi thành công.
+ */
+function processGeminiJobsAllAtOnce(geminiJobs, keys, recognized, ss, studentNames) {
+  if (!geminiJobs || !geminiJobs.length || !keys || !keys.length) return;
+  var names = (Array.isArray(studentNames) ? studentNames : []).filter(function(n) { return !!String(n || '').trim(); });
+  var modelId = GEMINI_MODEL_FALLBACKS[0].id;
+
+  var prompt =
+    'Ban la bo nhan dien ten hoc sinh tu anh chu viet tay.\n' +
+    'Danh sach ten hop le:\n' +
+    names.map(function(n, i) { return (i + 1) + '. ' + n; }).join('\n') + '\n\n' +
+    '- Moi anh co nhan "IMAGE_<idx>".\n' +
+    '- Chon dung 1 ten gan nhat trong danh sach; de rong neu khong doc duoc.\n' +
+    '- Tra ve DUY NHAT JSON array: [{"idx":0,"name":"..."},...]\n';
+
+  var parts = [{ text: prompt }];
+  for (var i = 0; i < geminiJobs.length; i++) {
+    parts.push({ text: 'IMAGE_' + i });
+    parts.push({ inline_data: { mime_type: geminiJobs[i].mime || 'image/jpeg', data: geminiJobs[i].base64 } });
+  }
+  var payloadStr = JSON.stringify({ contents: [{ parts: parts }] });
+  var url = _buildGeminiGenerateUrl(modelId);
+  if (ss) ss.toast('OCR ' + geminiJobs.length + ' anh (1 request)...', 'Gemini', -1);
+
+  var keyCount = Math.min(3, keys.length);
+  for (var k = 0; k < keyCount && !AZOTA_GEMINI_KEY_FATAL; k++) {
+    var resp = UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'X-goog-api-key': keys[k] },
+      payload: payloadStr,
+      muteHttpExceptions: true,
+    });
+    var code = resp.getResponseCode();
+    var body = resp.getContentText() || '';
+    _logExam('OCR_ALL', 'key#' + (k + 1) + ' model=' + modelId + ' code=' + code + ' bodyLen=' + body.length);
+
+    if (code === 200) {
+      var txt = _parseGeminiFetchResponse(resp);
+      var parsed = _parseJsonFromGeminiText(txt);
+      if (Array.isArray(parsed)) {
+        for (var pi = 0; pi < parsed.length; pi++) {
+          var row = parsed[pi] || {};
+          var idx = Number(row.idx);
+          if (!isNaN(idx) && idx >= 0 && idx < geminiJobs.length) {
+            recognized[geminiJobs[idx].idx].recognizedName = String(row.name || '').trim();
+          }
+        }
+        _logExam('OCR_ALL', 'done ' + geminiJobs.length + ' anh key#' + (k + 1));
+      } else {
+        _logExam('OCR_ALL', 'parse loi txt=' + String(txt || '').substring(0, 200));
+      }
+      return;
+    } else if (code === 429) {
+      var waitMs = _parseRetryDelayMsFrom429Body(body) || 20000;
+      _logExam('OCR_ALL_429', 'key#' + (k + 1) + ' wait=' + waitMs + 'ms');
+      Utilities.sleep(waitMs);
+    } else {
+      _logExam('OCR_ALL_ERR', 'key#' + (k + 1) + ' code=' + code + ' body=' + body.substring(0, 120));
+    }
+  }
+  _logExam('OCR_ALL', 'Tat ca key that bai');
+}
+
+/**
+ * OCR batch + parallel: chia geminiJobs thành chunk GEMINI_BATCH_SIZE,
+ * phân phối round-robin cho từng key, gửi đồng thời với UrlFetchApp.fetchAll.
+ * Nhanh hơn processGeminiJobsBatch khi có nhiều API key (lý thuyết keyCount lần).
+ */
+function processGeminiJobsBatchParallel(geminiJobs, keys, recognized, ss, studentNames) {
+  if (!geminiJobs || !geminiJobs.length || !keys || !keys.length) return;
+  var keyCount = Math.min(3, keys.length);
+  var names = (Array.isArray(studentNames) ? studentNames : []).filter(function(n) { return !!String(n || '').trim(); });
+  var modelId = GEMINI_MODEL_FALLBACKS[0].id;
+  var quota = _getGeminiModelQuota(modelId);
+  var minInterval = Math.ceil(GEMINI_RPM_WINDOW_MS / Math.max(1, quota.rpm));
+
+  var prompt =
+    'Bạn là bộ nhận diện tên học sinh từ ảnh chữ viết tay.\n' +
+    'Danh sách tên hợp lệ:\n' +
+    names.map(function(n, i) { return (i + 1) + '. ' + n; }).join('\n') + '\n\n' +
+    '- Mỗi ảnh có nhãn "IMAGE_<idx>".\n' +
+    '- Chọn đúng 1 tên gần nhất trong danh sách; để rỗng nếu không đọc được.\n' +
+    '- Trả về DUY NHẤT JSON array: [{"idx":0,"name":"..."},...]\n';
+
+  // Chia thành các chunk GEMINI_BATCH_SIZE ảnh
+  var allChunks = [];
+  for (var s = 0; s < geminiJobs.length; s += GEMINI_BATCH_SIZE) {
+    allChunks.push(geminiJobs.slice(s, Math.min(s + GEMINI_BATCH_SIZE, geminiJobs.length)));
+  }
+
+  // Phân phối chunk cho từng key theo round-robin
+  var queues = [];
+  for (var ki = 0; ki < keyCount; ki++) queues.push([]);
+  for (var ci = 0; ci < allChunks.length; ci++) queues[ci % keyCount].push(allChunks[ci]);
+
+  var nextAvailAt = [];
+  for (var ni = 0; ni < keyCount; ni++) nextAvailAt.push(0);
+  var total = geminiJobs.length;
+  var done = 0;
+
+  while (done < total && !AZOTA_GEMINI_KEY_FATAL) {
+    var now = Date.now();
+    var reqs = [];
+    var reqMeta = [];
+
+    for (var k = 0; k < keyCount; k++) {
+      if (!queues[k].length || now < nextAvailAt[k]) continue;
+      var chunk = queues[k][0];
+      var parts = [{ text: prompt }];
+      for (var pi = 0; pi < chunk.length; pi++) {
+        parts.push({ text: 'IMAGE_' + pi });
+        parts.push({ inline_data: { mime_type: chunk[pi].mime || 'image/jpeg', data: chunk[pi].base64 } });
+      }
+      reqs.push({
+        url: _buildGeminiGenerateUrl(modelId),
+        method: 'post',
+        contentType: 'application/json',
+        headers: { 'X-goog-api-key': keys[k] },
+        payload: JSON.stringify({ contents: [{ parts: parts }] }),
+        muteHttpExceptions: true,
+      });
+      reqMeta.push({ keyIdx: k, chunk: chunk });
+    }
+
+    if (!reqs.length) {
+      var minTs = Infinity;
+      for (var mk = 0; mk < keyCount; mk++) {
+        if (queues[mk].length && nextAvailAt[mk] < minTs) minTs = nextAvailAt[mk];
+      }
+      Utilities.sleep(Math.max(500, minTs - Date.now()));
+      continue;
+    }
+
+    var responses = UrlFetchApp.fetchAll(reqs);
+    var nowAfter = Date.now();
+    if (ss) ss.toast('OCR ' + done + '/' + total + ' (x' + reqs.length + ' song song)', 'Gemini batch', 3);
+
+    for (var r = 0; r < responses.length; r++) {
+      var meta = reqMeta[r];
+      var kIdx = meta.keyIdx;
+      var resp = responses[r];
+      var code = resp.getResponseCode();
+      var body = resp.getContentText() || '';
+
+      if (code === 200) {
+        var txt = _parseGeminiFetchResponse(resp);
+        var parsed = _parseJsonFromGeminiText(txt);
+        var mapped = {};
+        if (Array.isArray(parsed)) {
+          for (var ji = 0; ji < parsed.length; ji++) {
+            var prow = parsed[ji] || {};
+            var lIdx = Number(prow.idx);
+            if (!isNaN(lIdx) && lIdx >= 0 && lIdx < meta.chunk.length) mapped[lIdx] = String(prow.name || '').trim();
+          }
+        }
+        for (var jc = 0; jc < meta.chunk.length; jc++) {
+          recognized[meta.chunk[jc].idx].recognizedName = mapped.hasOwnProperty(jc) ? mapped[jc] : '';
+          done++;
+        }
+        queues[kIdx].shift();
+        nextAvailAt[kIdx] = nowAfter + minInterval;
+        _logExam('OCR_BPAR', 'key#' + (kIdx + 1) + ' ok done=' + done + '/' + total);
+      } else if (code === 429) {
+        var retryMs = _parseRetryDelayMsFrom429Body(body) || minInterval * 2;
+        nextAvailAt[kIdx] = nowAfter + retryMs;
+        _logExam('OCR_BPAR_429', 'key#' + (kIdx + 1) + ' wait=' + retryMs + 'ms');
+      } else if (code === 503) {
+        // Quá tải tạm thời: giữ chunk, retry sau 8s
+        nextAvailAt[kIdx] = nowAfter + 8000;
+        _logExam('OCR_BPAR_503', 'key#' + (kIdx + 1) + ' overload, retry in 8s');
+      } else {
+        for (var jc2 = 0; jc2 < meta.chunk.length; jc2++) {
+          recognized[meta.chunk[jc2].idx].recognizedName = '';
+          done++;
+        }
+        queues[kIdx].shift();
+        nextAvailAt[kIdx] = nowAfter + minInterval;
+        _logExam('OCR_BPAR_ERR', 'key#' + (kIdx + 1) + ' code=' + code + ' body=' + body.substring(0, 100));
+      }
+    }
+  }
+
+  if (AZOTA_GEMINI_KEY_FATAL) {
+    for (var fk = 0; fk < keyCount; fk++) {
+      for (var fq = 0; fq < queues[fk].length; fq++) {
+        var fChunk = queues[fk][fq];
+        for (var fj = 0; fj < fChunk.length; fj++) {
+          if (recognized[fChunk[fj].idx]) recognized[fChunk[fj].idx].recognizedName = '';
+        }
+      }
+    }
+  }
+}
+
 function processGeminiJobsParallel(geminiJobs, keys, geminiUrl, recognized, ss) {
   var keyCount = Math.min(3, keys.length);
   var queues = [[], [], []];
@@ -1107,9 +1308,8 @@ function processAzotaItemsForMatching(ctx) {
   }
 
   var keys = getGeminiApiKeys();
-  var geminiUrl = typeof getGeminiUrl === 'function' ? getGeminiUrl() : 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
   if (geminiJobs.length > 0 && keys.length > 0 && !AZOTA_GEMINI_KEY_FATAL) {
-    processGeminiJobsBatch(geminiJobs, keys, geminiUrl, recognized, ss, baoCaoNames);
+    processGeminiJobsAllAtOnce(geminiJobs, keys, recognized, ss, baoCaoNames);
   }
 
   var diemCol = colMapping.diemCham >= 0 ? colMapping.diemCham : colMapping.hoTen + 2;
@@ -1117,6 +1317,7 @@ function processAzotaItemsForMatching(ctx) {
   var matchedCount = 0;
   var usedRow = {};
   var resultsForDialog = useDialog ? [] : null;
+  var pendingWrites = []; // { sheetRow, diem, anh } — gom lại để batch write
   for (var r = 0; r < recognized.length; r++) {
     var rec = recognized[r];
     var best = findBestMatch(rec.recognizedName, baoCaoNames);
@@ -1129,8 +1330,7 @@ function processAzotaItemsForMatching(ctx) {
       matchedName = baoCaoNames[best.index] || '';
       scoreNum = Math.round((best.score || 0) * 100);
       if (!useDialog) {
-        baoCaoSheet.getRange(sheetRow, diemCol + 1).setValue(markValueForSheet(rec.mark));
-        if (rec.nameImageUrl) baoCaoSheet.getRange(sheetRow, anhCol + 1).setValue(rec.nameImageUrl);
+        pendingWrites.push({ sheetRow: sheetRow, diem: markValueForSheet(rec.mark), anh: rec.nameImageUrl || '' });
       }
       matchedCount++;
     }
@@ -1144,6 +1344,25 @@ function processAzotaItemsForMatching(ctx) {
         score: scoreNum,
         sourceItem: rec.sourceItem || {},
       });
+    }
+  }
+
+  // Batch write: sắp xếp theo row, gộp các row liên tiếp thành 1 lần setValues
+  if (!useDialog && pendingWrites.length > 0) {
+    pendingWrites.sort(function(a, b) { return a.sheetRow - b.sheetRow; });
+    var wi = 0;
+    while (wi < pendingWrites.length) {
+      var wj = wi;
+      while (wj + 1 < pendingWrites.length && pendingWrites[wj + 1].sheetRow === pendingWrites[wj].sheetRow + 1) wj++;
+      var gStart = pendingWrites[wi].sheetRow;
+      var gLen = wj - wi + 1;
+      var diemVals = [];
+      for (var wk = wi; wk <= wj; wk++) diemVals.push([pendingWrites[wk].diem]);
+      baoCaoSheet.getRange(gStart, diemCol + 1, gLen, 1).setValues(diemVals);
+      for (var wk2 = wi; wk2 <= wj; wk2++) {
+        if (pendingWrites[wk2].anh) baoCaoSheet.getRange(pendingWrites[wk2].sheetRow, anhCol + 1).setValue(pendingWrites[wk2].anh);
+      }
+      wi = wj + 1;
     }
   }
 
@@ -1860,14 +2079,45 @@ function enrichResultsWithLargeImage(resultsForDialog, sheetContext) {
   var examId = sheetContext && sheetContext.examId ? String(sheetContext.examId) : '';
   var token = sheetContext && sheetContext.token ? String(sheetContext.token) : '';
   var cookie = sheetContext && sheetContext.cookie ? String(sheetContext.cookie) : '';
-  if (!examId || !token) return;
-  for (var i = 0; i < (resultsForDialog || []).length; i++) {
-    var row = resultsForDialog[i];
-    var src = row && row.sourceItem ? row.sourceItem : null;
+  if (!examId || !token || !(resultsForDialog || []).length) return;
+
+  var headers = {
+    'Authorization': 'Bearer ' + token,
+    'User-Agent': 'Mozilla/5.0',
+    'Referer': 'https://azota.vn/',
+    'Accept': 'application/json'
+  };
+  if (cookie) headers['Cookie'] = cookie;
+
+  // Thu thập tất cả request cần fetch
+  var fetchReqs = [];
+  var fetchMeta = [];
+  for (var i = 0; i < resultsForDialog.length; i++) {
+    var src = resultsForDialog[i] && resultsForDialog[i].sourceItem ? resultsForDialog[i].sourceItem : null;
     var uid = _extractUserIdFromItem(src);
-    var detail = uid ? fetchExamResultGetDetail(examId, uid, token, cookie) : null;
-    var path = _extractAztPathFromAny(detail);
-    row.nameImageUrlLarge = _buildLargeImageUrlFromPath(path) || row.nameImageUrl || '';
+    if (!uid) continue;
+    fetchReqs.push({
+      url: 'https://azota.vn/api/ExamResult/GetDetail?examId=' + encodeURIComponent(examId) + '&userId=' + encodeURIComponent(uid),
+      method: 'get',
+      muteHttpExceptions: true,
+      headers: headers,
+    });
+    fetchMeta.push({ rowIdx: i, uid: uid });
+  }
+  if (!fetchReqs.length) return;
+
+  // Gửi tất cả song song
+  var responses = UrlFetchApp.fetchAll(fetchReqs);
+  for (var r = 0; r < responses.length; r++) {
+    var meta = fetchMeta[r];
+    try {
+      if (responses[r].getResponseCode() !== 200) continue;
+      var detail = JSON.parse(responses[r].getContentText() || '{}');
+      var path = _extractAztPathFromAny(detail);
+      resultsForDialog[meta.rowIdx].nameImageUrlLarge = _buildLargeImageUrlFromPath(path) || resultsForDialog[meta.rowIdx].nameImageUrl || '';
+    } catch (e) {
+      _logExam('DETAIL', 'GetDetail error userId=' + meta.uid + ': ' + e.toString());
+    }
   }
 }
 

@@ -53,7 +53,7 @@ function NoteTimeline({ studentId, open }) {
           <Stack spacing={0.5}>
             {grouped[date].map((note) => (
               <Paper
-                key={note.id}
+                key={`${note.id}-${note.type || 'unknown'}`} // Use a composite key for robustness
                 variant="outlined"
                 sx={{
                   px: 1.5,
